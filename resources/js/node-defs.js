@@ -436,8 +436,8 @@ function registerAllNodes() {
         this.addOutput("执行流", "exec");
         this.addInput("玩家", "player");
         this.addInput("位置", "location");
-        this.addInput("坐标文本", "string");
-        this.size = [240, 80];
+        this.addInput("世界", "string");
+        this.size = [240, 95];
         this.shape = LiteGraph.BOX_SHAPE;
     }, C.plrFg, C.plrBg);
 
@@ -834,15 +834,16 @@ function registerAllNodes() {
     LiteGraph.registerNodeType("values/text", TextNode);
 
     function CoordinateNode() {
-        this.addOutput("坐标文本", "string");
+        this.addOutput("位置", "location");
+        this.addInput("世界", "string");
         this.addProperty("coords", "100,64,200");
         this.addWidget("text", "坐标(例:100,64,200)", "100,64,200", (v) => {
             this.properties.coords = v; setTimeout(regenerateAll, 80);
         });
-        this.size = [220, 65];
+        this.size = [220, 75];
         this.shape = LiteGraph.BOX_SHAPE;
     }
-    CoordinateNode.title = "坐标";
+    CoordinateNode.title = "坐标文本";
     CoordinateNode.prototype.color = C.datFg;
     CoordinateNode.prototype.bgcolor = C.datBg;
     CoordinateNode.prototype._propKeys = ["coords"];

@@ -274,6 +274,11 @@ function resolveLocation(node, inputName) {
     if (src.type === "events/blockBreak" || src.type === "events/blockPlace") {
         return "event.getBlock().getLocation()";
     }
+    if (src.type === "values/coordinate") {
+        // 坐标文本数据节点 → 解析为 Location
+        const worldExpr = resolveString(src, "世界", '"world"');
+        return `__parseLocation(${JSON.stringify(src.properties.coords)}, ${worldExpr}, ${resolvePlayerInput(node, "玩家")})`;
+    }
     return "player.getLocation()";
 }
 
@@ -376,16 +381,13 @@ function traverseExec(startNode, indent, imports) {
             case "player/teleportToCoords": {
                 imports.add("import org.bukkit.Location;");
                 const locSrc = getLinkedSourceNode(cur, "位置");
-                const coordSrc = getLinkedSourceNode(cur, "坐标文本");
                 if (locSrc) {
                     const locExpr = resolveLocation(cur, "位置");
                     lines.push(`${i}${p}.teleport(${locExpr});`);
-                } else if (coordSrc) {
-                    const coordExpr = resolveString(cur, "坐标文本", '""');
-                    lines.push(`${i}${p}.teleport(__parseLocation(${coordExpr}, ${p}));`);
                 } else {
-                    // 端口未连线时 fallback 到默认坐标 (0,64,0)
-                    lines.push(`${i}${p}.teleport(new Location(${p}.getServer().getWorld("world"), 0, 64, 0));`);
+                    // 未连线时 fallback 到"世界"输入 + 默认坐标 (0,64,0)
+                    const worldExpr = resolveString(cur, "世界", '"world"');
+                    lines.push(`${i}${p}.teleport(new Location(${p}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
                 }
                 break;
             }
@@ -996,15 +998,16 @@ function generateJava() {
         classLines.push("    }");
     }
 
-    // __parseLocation 工具方法（动态坐标文本解析）
-    const hasDynCoord = graph.findNodesByType("player/teleportToCoords").some(n =>
-        n.inputs && n.inputs.some(i => i.name === "坐标文本" && i.link != null)
-    );
-    if (hasDynCoord) {
+    // __parseLocation 工具方法（坐标文本 → Location，可指定世界名）
+    const hasCoordNode = graph.findNodesByType("values/coordinate").length > 0 ||
+        graph.findNodesByType("player/teleportToCoords").some(n =>
+            n.inputs && n.inputs.some(i => i.name === "位置" && i.link != null)
+        );
+    if (hasCoordNode) {
         imports.add("import org.bukkit.Location;");
         classLines.push("");
         classLines.push("    // 坐标文本转 Location 工具方法");
-        classLines.push("    private org.bukkit.Location __parseLocation(String s, org.bukkit.entity.Player p) {");
+        classLines.push("    private org.bukkit.Location __parseLocation(String s, String worldName, org.bukkit.entity.Player p) {");
         classLines.push("        String[] parts = s.split(\",\");");
         classLines.push("        if (parts.length >= 3) {");
         classLines.push("            double x = 0, y = 64, z = 0;");
@@ -1012,10 +1015,8 @@ function generateJava() {
         classLines.push("            try { x = Double.parseDouble(parts[parts.length-3].trim()); } catch (Exception e) {}");
         classLines.push("            try { y = Double.parseDouble(parts[parts.length-2].trim()); } catch (Exception e) {}");
         classLines.push("            try { z = Double.parseDouble(parts[parts.length-1].trim()); } catch (Exception e) {}");
-        classLines.push("            if (parts.length >= 4) {");
-        classLines.push("                StringBuilder wname = new StringBuilder(parts[0].trim());");
-        classLines.push("                for (int i = 1; i < parts.length - 3; i++) wname.append(',').append(parts[i].trim());");
-        classLines.push("                org.bukkit.World w2 = org.bukkit.Bukkit.getWorld(wname.toString());");
+        classLines.push("            if (worldName != null && !worldName.isEmpty()) {");
+        classLines.push("                org.bukkit.World w2 = org.bukkit.Bukkit.getWorld(worldName);");
         classLines.push("                if (w2 != null) w = w2;");
         classLines.push("            }");
         classLines.push("            return new org.bukkit.Location(w, x, y, z);");
