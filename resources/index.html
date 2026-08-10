@@ -1,0 +1,2839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedstoneCode Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/litegraph.js@0.7.18/build/litegraph.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/litegraph.js@0.7.18/css/litegraph.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/ace.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5;
+        }
+
+        .main-container {
+            height: calc(100vh - 56px);
+        }
+
+        .view-section {
+            display: none;
+            height: 100%;
+            width: 100%;
+        }
+
+        .view-section.active {
+            display: flex;
+        }
+
+        .tab-group {
+            display: flex;
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            gap: 0;
+            border-bottom: 1px solid #e2e6ed;
+        }
+
+        .tab-btn {
+            padding: 8px 18px;
+            border-radius: 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #7a8494;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap;
+            margin-bottom: -1px;
+        }
+
+        .tab-btn.active {
+            background: transparent;
+            color: #1a2035;
+            border-bottom-color: #1a2035;
+            box-shadow: none;
+        }
+
+        .tab-btn:hover:not(.active) {
+            color: #1a2035;
+            background: rgba(0, 0, 0, .03);
+        }
+
+        .tab-btn.disabled {
+            color: #b6becd;
+            cursor: not-allowed;
+        }
+
+        .tab-btn.disabled:hover {
+            color: #b6becd;
+            background: transparent;
+        }
+
+        .mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 6px;
+            border: 1px solid #eef2f7;
+            border-radius: 999px;
+            background: #f8fafc;
+            font-size: 10px;
+            font-weight: 600;
+            color: #9aa3b2;
+            cursor: pointer;
+            user-select: none;
+            opacity: .65;
+            transition: opacity .15s, border-color .15s, background .15s;
+        }
+
+        .mode-toggle:hover {
+            opacity: 1;
+            border-color: #e5e7eb;
+            background: #f1f5f9;
+        }
+
+        .mode-text {
+            display: none;
+        }
+
+        .mode-toggle:hover .mode-text {
+            display: inline;
+        }
+
+        .mode-toggle input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .mode-switch {
+            position: relative;
+            width: 28px;
+            height: 14px;
+            background: #e9eef5;
+            border-radius: 999px;
+            transition: background .2s ease;
+        }
+
+        .mode-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 10px;
+            height: 10px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+            transition: transform .2s ease;
+        }
+
+        .mode-toggle input:checked+.mode-switch {
+            background: #1a2035;
+        }
+
+        .mode-toggle input:checked+.mode-switch::after {
+            transform: translateX(14px);
+        }
+
+        .mode-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #6b7280;
+            background: #f4f6fb;
+            border: 1px solid #e2e8f0;
+        }
+
+        #node-panel {
+            width: 220px;
+            min-width: 220px;
+            background: #1c1f2b;
+            border-right: 1px solid #2e3347;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #node-panel::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #node-panel::-webkit-scrollbar-thumb {
+            background: #3a3f55;
+            border-radius: 4px;
+        }
+
+        summary {
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .panel-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: #dddddd;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 10px 10px 10px 14px;
+            border-radius: 6px;
+            margin: 2px 6px 0;
+            transition: color .15s, background .15s;
+        }
+
+        .panel-section-title:hover {
+            color: #8892aa;
+            background: rgba(255, 255, 255, .04);
+        }
+
+        .panel-section-title .section-arrow {
+            display: inline-block;
+            transform-origin: center;
+            transition: transform 0.2s ease;
+            font-size: 8px;
+            color: #3a4060;
+            flex-shrink: 0;
+            margin-left: 4px;
+        }
+
+        details[open] .panel-section-title .section-arrow {
+            transform: rotate(90deg);
+            color: #5a6282;
+        }
+
+        .panel-section-body {
+            overflow: visible;
+            max-height: none;
+            padding: 4px 0;
+        }
+
+        .panel-section-body .node-item:last-child {
+            margin-bottom: 4px;
+        }
+
+        .node-item {
+            margin: 2px 8px;
+            padding: 8px 10px;
+            border-radius: 7px;
+            cursor: grab;
+            font-size: 12px;
+            font-weight: 500;
+            color: #c8cde0;
+            transition: background .15s;
+            user-select: none;
+            border-left: 3px solid transparent;
+        }
+
+        .node-item:hover {
+            background: #272b3d;
+        }
+
+        .node-item:active {
+            cursor: grabbing;
+        }
+
+        .node-item.ev {
+            border-color: #3b7bd4;
+        }
+
+        .node-item.act {
+            border-color: #9055d4;
+        }
+
+        .node-item.msg {
+            border-color: #d46b30;
+        }
+
+        .node-item.dat {
+            border-color: #3aad5e;
+        }
+
+        .node-item.cmd {
+            border-color: #d4c030;
+        }
+
+        .node-item.cfg {
+            border-color: #d43040;
+        }
+
+        .node-item.plr {
+            border-color: #30afd4;
+        }
+
+        .node-item.wld {
+            border-color: #0ad4c0;
+        }
+
+        .node-item.srv {
+            border-color: #d48030;
+        }
+
+        .node-item.lgc {
+            border-color: #a0c020;
+        }
+
+        .node-item.net {
+            border-color: #9040d4;
+        }
+
+        .node-item .node-type-badge {
+            float: right;
+            font-size: 9px;
+            padding: 1px 5px;
+            border-radius: 4px;
+            opacity: .7;
+            margin-top: 1px;
+        }
+
+        .node-item.ev .node-type-badge {
+            background: #1e3a6e;
+            color: #7eb3ff;
+        }
+
+        .node-item.act .node-type-badge {
+            background: #3a1a6e;
+            color: #c07eff;
+        }
+
+        .node-item.msg .node-type-badge {
+            background: #6e2e0a;
+            color: #ffaa7e;
+        }
+
+        .node-item.dat .node-type-badge {
+            background: #0a4a22;
+            color: #7effaa;
+        }
+
+        .node-item.cmd .node-type-badge {
+            background: #4a420a;
+            color: #ffee7e;
+        }
+
+        .node-item.cfg .node-type-badge {
+            background: #4a0a10;
+            color: #ff7e8a;
+        }
+
+        .node-item.plr .node-type-badge {
+            background: #0a3a4a;
+            color: #7ee8ff;
+        }
+
+        .node-item.wld .node-type-badge {
+            background: #0a3a38;
+            color: #7ef8f0;
+        }
+
+        .node-item.srv .node-type-badge {
+            background: #3a2000;
+            color: #ffcc7e;
+        }
+
+        .node-item.lgc .node-type-badge {
+            background: #303800;
+            color: #d8f060;
+        }
+
+        .node-item.net .node-type-badge {
+            background: #250a40;
+            color: #d07ef8;
+        }
+
+        .node-item.vr {
+            border-color: #8a30c0;
+        }
+
+        .node-item.vr .node-type-badge {
+            background: #2a0a40;
+            color: #c87ef8;
+        }
+
+        .node-item.cvt {
+            border-color: #1a7ab0;
+        }
+
+        .node-item.cvt .node-type-badge {
+            background: #081828;
+            color: #7ec8f8;
+        }
+
+        #blocklyDiv {
+            flex: 1;
+            background: #181b27;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #blocklyDiv canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #source-tabs {
+            display: flex;
+            background: #1e2130;
+            border-bottom: 1px solid #2e3347;
+            padding: 0 12px;
+            gap: 2px;
+        }
+
+        .src-tab {
+            padding: 10px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #5a6282;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all .15s;
+            white-space: nowrap;
+        }
+
+        .src-tab.active {
+            color: #a8c0ff;
+            border-bottom-color: #4a80ff;
+        }
+
+        .src-tab:hover:not(.active) {
+            color: #8899bb;
+        }
+
+        #source-editors {
+            flex: 1;
+            position: relative;
+        }
+
+        .src-editor-pane {
+            position: absolute;
+            inset: 0;
+            display: none;
+        }
+
+        .src-editor-pane.active {
+            display: block;
+        }
+
+        #view-config {
+            overflow-y: auto;
+            flex-direction: column;
+        }
+
+        #view-config::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #view-config::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 6px;
+        }
+
+        .cfg-input {
+            width: 100%;
+            background: #f8fafd;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 9px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            color: #1a2035;
+        }
+
+        .cfg-input:focus {
+            border-color: #4a80ff;
+            box-shadow: 0 0 0 3px rgba(74, 128, 255, .1);
+        }
+
+        .cfg-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #8898aa;
+            margin-bottom: 6px;
+            display: block;
+            letter-spacing: .5px;
+        }
+
+        .cfg-card {
+            background: #fff;
+            border-radius: 16px;
+            border: 1.5px solid #e8edf5;
+            padding: 22px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
+        }
+
+        .cfg-card-title {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .5px;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #canvas-hint {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, .08);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 20px;
+            padding: 6px 16px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, .45);
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 10;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
+
+        .modal-content {
+            position: relative;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            width: 400px;
+            max-width: 90%;
+            padding: 0;
+            overflow: hidden;
+            animation: modalFadeIn 0.2s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            padding: 18px 20px;
+            background: #f9fafc;
+            border-bottom: 1px solid #eef2f6;
+        }
+
+        .modal-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            margin-right: 12px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .modal.success .modal-icon {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2310b981'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/%3E%3C/svg%3E");
+        }
+
+        .modal.error .modal-icon {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ef4444'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z'/%3E%3C/svg%3E");
+        }
+
+        .modal-title {
+            flex: 1;
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a2035;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            font-size: 28px;
+            line-height: 1;
+            color: #9aa3b2;
+            cursor: pointer;
+            padding: 0 8px;
+            transition: color 0.15s;
+        }
+
+        .modal-close:hover {
+            color: #4a5568;
+        }
+
+        .modal-body {
+            padding: 24px 20px;
+            font-size: 15px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid #eef2f6;
+            text-align: right;
+        }
+
+        .modal-btn {
+            background: #1a2035;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .modal-btn:hover {
+            background: #2d3748;
+        }
+
+        .litecontextmenu .litemenu-entry i {
+            display: inline-block;
+            width: 7px;
+            /* 固定图标区域宽度 */
+            text-align: center;
+            /* 图标在宽度内居中 */
+            margin-right: 8px;
+            /* 图标与文字的间距 */
+            vertical-align: middle;
+        }
+
+        /* ===== 模板市场样式 ===== */
+        .mkt-cat {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #7a8494;
+            background: #f4f6fb;
+            border: 1.5px solid #e8edf5;
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap;
+        }
+
+        .mkt-cat.active {
+            background: #1a2035;
+            color: #fff;
+            border-color: #1a2035;
+        }
+
+        .mkt-cat:hover:not(.active) {
+            background: #eaedf5;
+            color: #1a2035;
+        }
+
+        .mkt-card {
+            background: #fff;
+            border-radius: 16px;
+            border: 1.5px solid #e8edf5;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
+            overflow: hidden;
+            transition: box-shadow .2s, transform .2s, border-color .2s;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mkt-card:hover {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .10);
+            transform: translateY(-2px);
+            border-color: #c8d0e8;
+        }
+
+        .mkt-card-header {
+            padding: 18px 18px 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .mkt-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .mkt-card-body {
+            padding: 0 18px 14px;
+            flex: 1;
+        }
+
+        .mkt-card-footer {
+            padding: 12px 18px;
+            border-top: 1px solid #f0f3f8;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fafbfd;
+        }
+
+        .mkt-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #f0f3f8;
+            color: #6b7890;
+            border: 1px solid #e8edf5;
+        }
+
+        .mkt-import-btn {
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #1a2035;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            transition: background .15s;
+            white-space: nowrap;
+        }
+
+        .mkt-import-btn:hover {
+            background: #2a3555;
+        }
+
+        .mkt-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid #e8edf5;
+            border-top-color: #4a80ff;
+            border-radius: 50%;
+            animation: mkt-spin .7s linear infinite;
+        }
+
+        @keyframes mkt-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ===== 账户系统样式 ===== */
+        .auth-modal-card {
+            position: relative;
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 28px 60px rgba(0, 0, 0, .28);
+            width: 440px;
+            max-width: 94vw;
+            overflow: hidden;
+            animation: modalFadeIn .22s cubic-bezier(.34, 1.2, .64, 1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .auth-modal-header {
+            background: linear-gradient(135deg, #1a2035 0%, #2d3a6a 100%);
+            padding: 22px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 12px 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #9aa3b2;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all .15s;
+        }
+
+        .auth-tab-active {
+            color: #1a2035;
+            border-bottom-color: #1a2035;
+        }
+
+        .auth-tab:hover:not(.auth-tab-active) {
+            color: #4a5568;
+        }
+
+        .auth-eye-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #9aa3b2;
+            padding: 2px;
+            transition: color .15s;
+            line-height: 0;
+        }
+
+        .auth-eye-btn:hover {
+            color: #4a5568;
+        }
+
+        .auth-submit-btn {
+            width: 100%;
+            background: #1a2035;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .15s, transform .1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            letter-spacing: .3px;
+            font-family: inherit;
+        }
+
+        .auth-submit-btn:hover:not(:disabled) {
+            background: #2a3555;
+        }
+
+        .auth-submit-btn:active:not(:disabled) {
+            transform: scale(.98);
+        }
+
+        .auth-submit-btn:disabled {
+            opacity: .6;
+            cursor: not-allowed;
+        }
+
+        .auth-error-box {
+            background: #fff5f5;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 12px;
+            color: #dc2626;
+            display: none;
+            margin-bottom: 2px;
+        }
+
+        .auth-hint-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 12px;
+            color: #1d4ed8;
+            display: none;
+        }
+
+        .pwd-strength-track {
+            height: 4px;
+            background: #f0f3f8;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+
+        .pwd-strength-fill {
+            height: 100%;
+            width: 0;
+            border-radius: 4px;
+            transition: width .3s, background .3s;
+        }
+
+        .auth-btn-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, .35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: mkt-spin .65s linear infinite;
+            vertical-align: middle;
+        }
+
+        .auth-drop-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            background: none;
+            border: none;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .12s;
+            text-align: left;
+            font-family: inherit;
+            color: #3a4560;
+        }
+
+        .auth-drop-item:hover {
+            background: #f4f6fb;
+        }
+
+        .auth-drop-item.danger {
+            color: #ef4444;
+        }
+
+        .auth-drop-item.danger:hover {
+            background: #fff5f5;
+        }
+
+        .mkt-import-btn-locked {
+            background: #8898aa !important;
+        }
+
+        .mkt-import-btn-locked:hover {
+            background: #6b7890 !important;
+        }
+
+        /* ===== 用户面板（我的上传 + 账户设置）===== */
+        .user-modal-card {
+            position: relative;
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 28px 60px rgba(0, 0, 0, .25);
+            width: 620px;
+            max-width: 96vw;
+            max-height: 86vh;
+            display: flex;
+            flex-direction: column;
+            animation: modalFadeIn .22s cubic-bezier(.34, 1.2, .64, 1);
+            overflow: hidden;
+        }
+
+        .user-modal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-bottom: 1.5px solid #f0f3f8;
+            flex-shrink: 0;
+        }
+
+        .user-modal-head h2 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a2035;
+        }
+
+        .user-modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+
+        .user-modal-body::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .user-modal-body::-webkit-scrollbar-thumb {
+            background: #e0e5ef;
+            border-radius: 4px;
+        }
+
+        /* 我的上传 - 上传卡片 */
+        .up-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 1.5px solid #e8edf5;
+            background: #fff;
+            transition: box-shadow .15s;
+            margin-bottom: 10px;
+        }
+
+        .up-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .07);
+        }
+
+        .up-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .up-card-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .up-card-tag {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 8px;
+            border-radius: 20px;
+        }
+
+        .up-status-pending {
+            background: #fff7ed;
+            color: #c2610c;
+            border: 1px solid #fed7aa;
+        }
+
+        .up-status-approved {
+            background: #f0fdf4;
+            color: #16a34a;
+            border: 1px solid #bbf7d0;
+        }
+
+        .up-status-rejected {
+            background: #fff5f5;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+
+        /* 账户设置 - section 分割 */
+        .settings-section {
+            background: #fff;
+            border-radius: 14px;
+            border: 1.5px solid #e8edf5;
+            padding: 18px 20px;
+            margin-bottom: 14px;
+        }
+
+        .settings-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #9aa3b2;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f0f3f8;
+        }
+
+        .settings-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        @media(max-width:480px) {
+            .settings-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 状态提示条 */
+        .up-alert {
+            padding: 9px 14px;
+            border-radius: 9px;
+            font-size: 12px;
+            margin-bottom: 14px;
+            display: none;
+        }
+
+        .up-alert-ok {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #16a34a;
+        }
+
+        .up-alert-err {
+            background: #fff5f5;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+        }
+    </style>
+</head>
+
+<body class="overflow-hidden">
+
+
+    <header
+        class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-5 z-50 relative shadow-sm">
+        <div class="flex items-center gap-8">
+            <div class="flex items-center gap-2.5">
+
+                <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    style="flex-shrink:0;">
+
+                    <rect width="30" height="30" rx="4" fill="#1a0a0a" />
+
+
+                    <rect x="13" y="7" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="13" y="13" width="4" height="4" fill="#ff2222" opacity="0.95" />
+                    <rect x="7" y="13" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="19" y="13" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="13" y="19" width="4" height="4" fill="#cc1a1a" />
+
+                    <rect x="7" y="7" width="4" height="4" fill="#3d0000" />
+                    <rect x="19" y="7" width="4" height="4" fill="#3d0000" />
+                    <rect x="7" y="19" width="4" height="4" fill="#3d0000" />
+                    <rect x="19" y="19" width="4" height="4" fill="#3d0000" />
+
+                    <rect x="14" y="14" width="2" height="2" fill="#ff8888" />
+                </svg>
+                <span class="font-bold text-gray-900 text-base tracking-tight">RC Studio</span>
+                <span
+                    class="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">1.3.0</span>
+            </div>
+            <nav class="tab-group">
+                <button onclick="switchTab('logic')" id="tab-logic" class="tab-btn active">逻辑设计</button>
+                <button onclick="switchTab('config')" id="tab-config" class="tab-btn">插件配置</button>
+                <button onclick="switchTab('source')" id="tab-source" class="tab-btn">源码预览</button>
+                <button onclick="switchTab('market')" id="tab-market" class="tab-btn">模板市场</button>
+                <button onclick="switchTab('about')" id="tab-about" class="tab-btn">关于</button>
+            </nav>
+        </div>
+        <div class="flex items-center gap-3">
+            <span id="status" class="text-xs text-gray-500 hidden max-w-xs truncate"></span>
+
+            <div class="flex items-center gap-1.5 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                <button onclick="exportBlueprint()" title="将当前项目（节点图+配置）导出为 .mcbp 文件分享给他人"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    导出项目
+                </button>
+                <div class="w-px h-4 bg-gray-200"></div>
+                <button onclick="document.getElementById('blueprintFileInput').click()" title="导入他人分享的 .mcbp 项目文件"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    导入项目
+                </button>
+            </div>
+            <input type="file" id="blueprintFileInput" accept=".mcbp,.json" style="display:none"
+                onchange="importBlueprint(this)">
+
+            <div id="auth-header-area"></div>
+
+            <button id="compileBtn" onclick="compilePlugin()"
+                class="flex items-center gap-2 bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg font-semibold text-sm border border-gray-700 active:scale-95 transition-all">
+                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2.5"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z" />
+                </svg>
+                导出 JAR
+            </button>
+        </div>
+    </header>
+
+    <div class="flex main-container">
+        <main class="flex-1 relative overflow-hidden" style="display:flex;flex-direction:column;">
+
+
+            <div id="view-logic" class="view-section active" style="flex:1;">
+
+                <div id="node-panel">
+
+                    <div
+                        style="padding:10px 10px 6px; position:sticky; top:0; background:#1c1f2b; z-index:5; border-bottom:1px solid #232737;">
+                        <input id="node-search" type="text" placeholder="搜索节点…" oninput="filterNodes(this.value)"
+                            style="width:100%; background:#13161f; border:1px solid #2e3347; border-radius:7px; padding:6px 10px; font-size:11px; color:#c8cde0; outline:none;">
+                    </div>
+
+
+                    <details open>
+                        <summary class="panel-section-title">
+                            <span>生命周期</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item ev" draggable="true" data-node="events/onEnable">插件启用 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/onDisable">插件卸载 <span
+                                    class="node-type-badge">事件</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>玩家事件</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item ev" draggable="true" data-node="events/playerJoin">玩家加入 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerQuit">玩家离开 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerDeath">玩家死亡 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerChat">玩家聊天 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerMove">玩家移动 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerRespawn">玩家复活 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerInteract">玩家交互 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerLogin">玩家登录预处理 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/blockBreak">破坏方块 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/blockPlace">放置方块 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/entityDamageByPlayer">攻击实体
+                                <span class="node-type-badge">事件</span>
+                            </div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerDamaged">受到伤害 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerDropItem">丢弃物品 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerPickupItem">拾取物品 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerLevelUp">玩家升级 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerSneak">切换潜行 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerSprint">切换疾跑 <span
+                                    class="node-type-badge">事件</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>指令</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item cmd" draggable="true" data-node="command/onCommand">注册指令 <span
+                                    class="node-type-badge">指令</span></div>
+                            <div class="node-item cmd" draggable="true" data-node="command/sendUsage">发送用法提示 <span
+                                    class="node-type-badge">指令</span></div>
+                            <div class="node-item cmd" draggable="true" data-node="command/checkPermission">检查权限 <span
+                                    class="node-type-badge">指令</span></div>
+                            <div class="node-item cmd" draggable="true" data-node="command/getArg">获取参数项 <span
+                                    class="node-type-badge">指令</span></div>
+                            <div class="node-item cmd" draggable="true" data-node="command/argCount">参数个数 <span
+                                    class="node-type-badge">指令</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>消息动作</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item act" draggable="true" data-node="actions/consoleLog">后台打印 <span
+                                    class="node-type-badge">动作</span></div>
+                            <div class="node-item msg" draggable="true" data-node="actions/broadcast">全服广播 <span
+                                    class="node-type-badge">动作</span></div>
+                            <div class="node-item msg" draggable="true" data-node="actions/sendMessage">发送消息 <span
+                                    class="node-type-badge">动作</span></div>
+                            <div class="node-item msg" draggable="true" data-node="actions/sendTitle">发送标题 <span
+                                    class="node-type-badge">动作</span></div>
+                            <div class="node-item msg" draggable="true" data-node="actions/sendActionBar">发送动作栏 <span
+                                    class="node-type-badge">动作</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>玩家操控</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item plr" draggable="true" data-node="player/kick">踢出玩家 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/giveExp">给予经验 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/giveItem">给予物品 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/removeItem">移除物品 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/clearInventory">清空背包 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/setHealth">设置血量 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/setMaxHealth">设置最大血量 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/setFoodLevel">设置饱食度 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/setLevel">设置等级 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/teleport">传送至玩家 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/teleportToCoords">传送到坐标 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/setGameMode">设置游戏模式 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/setFlying">设置飞行 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/playSound">播放音效 <span
+                                    class="node-type-badge">玩家</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/playParticle">播放粒子特效 <span
+                                    class="node-type-badge">玩家</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>玩家数据</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item plr" draggable="true" data-node="player/getHealth">获取血量 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/getMaxHealth">获取最大血量 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/getLevel">获取等级 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/getFoodLevel">获取饱食度 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/getLocation">获取位置 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/getItemInHand">获取手持物品 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="player/isOnline">检查是否在线 <span
+                                    class="node-type-badge">数据</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>世界操作</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item wld" draggable="true" data-node="world/setBlock">设置方块 <span
+                                    class="node-type-badge">世界</span></div>
+                            <div class="node-item wld" draggable="true" data-node="world/fillBlocks">填充区域方块 <span
+                                    class="node-type-badge">世界</span></div>
+                            <div class="node-item wld" draggable="true" data-node="world/spawnLightning">生成闪电 <span
+                                    class="node-type-badge">世界</span></div>
+                            <div class="node-item wld" draggable="true" data-node="world/createExplosion">创建爆炸 <span
+                                    class="node-type-badge">世界</span></div>
+                            <div class="node-item wld" draggable="true" data-node="world/spawnEntity">生成实体 <span
+                                    class="node-type-badge">世界</span></div>
+                            <div class="node-item wld" draggable="true" data-node="world/setTime">设置世界时间 <span
+                                    class="node-type-badge">世界</span></div>
+                            <div class="node-item wld" draggable="true" data-node="world/setWeather">设置天气 <span
+                                    class="node-type-badge">世界</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>服务器操作</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item srv" draggable="true" data-node="server/dispatchCommand">执行控制台指令 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/runTaskLater">延迟执行 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/runTaskTimer">重复定时任务 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/forEachPlayer">遍历在线玩家 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/broadcastToOps">广播给管理员 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/getOnlineCount">获取在线人数 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/kickAll">踢出所有玩家 <span
+                                    class="node-type-badge">服务器</span></div>
+                            <div class="node-item srv" draggable="true" data-node="server/setMotd">设置MOTD <span
+                                    class="node-type-badge">服务器</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>逻辑控制</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifStringEqual">字符串相等判断 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifContains">字符串包含判断 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifNumberCompare">数值比较判断 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifPlayerHasPerm">判断玩家权限 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifPlayerIsOp">判断是否为OP <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifHealthBelow">判断血量低于 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/ifItemInHand">判断手持物品 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/cancelEvent">取消事件 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/mathOp">数学运算 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/strConcat">字符串拼接 <span
+                                    class="node-type-badge">逻辑</span></div>
+                            <div class="node-item lgc" draggable="true" data-node="logic/checkType">类型判断 <span
+                                    class="node-type-badge">逻辑</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>网络请求</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item net" draggable="true" data-node="network/httpGet">异步HTTP GET <span
+                                    class="node-type-badge">网络</span></div>
+                            <div class="node-item net" draggable="true" data-node="network/httpPost">异步HTTP POST <span
+                                    class="node-type-badge">网络</span></div>
+                            <div class="node-item net" draggable="true" data-node="network/parseJsonField">解析JSON字段
+                                <span class="node-type-badge">网络</span>
+                            </div>
+                            <div class="node-item net" draggable="true" data-node="network/buildJsonObject">构建JSON对象
+                                <span class="node-type-badge">网络</span>
+                            </div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>配置文件</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item cfg" draggable="true" data-node="config/saveDefaultConfig">保存默认配置
+                                <span class="node-type-badge">配置</span>
+                            </div>
+                            <div class="node-item cfg" draggable="true" data-node="config/reloadConfig">重载配置 <span
+                                    class="node-type-badge">配置</span></div>
+                            <div class="node-item cfg" draggable="true" data-node="config/getString">读取字符串 <span
+                                    class="node-type-badge">配置</span></div>
+                            <div class="node-item cfg" draggable="true" data-node="config/getInt">读取整数 <span
+                                    class="node-type-badge">配置</span></div>
+                            <div class="node-item cfg" draggable="true" data-node="config/setAndSave">写入并保存 <span
+                                    class="node-type-badge">配置</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>数据节点</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body" style="padding-bottom:10px;">
+                            <div class="node-item dat" draggable="true" data-node="values/text">文本 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item dat" draggable="true" data-node="values/number">数字 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item dat" draggable="true" data-node="values/formatText">格式化文本 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item plr" draggable="true" data-node="values/playerName">玩家名字 <span
+                                    class="node-type-badge">数据</span></div>
+                            <div class="node-item dat" draggable="true" data-node="values/colorText">颜色文本 <span
+                                    class="node-type-badge">数据</span></div>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>变量存储</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body">
+                            <div class="node-item vr" draggable="true" data-node="vars/setVar">设置变量 <span
+                                    class="node-type-badge">变量</span></div>
+                            <div class="node-item vr" draggable="true" data-node="vars/getVarStr">获取字符串变量 <span
+                                    class="node-type-badge">变量</span></div>
+                            <div class="node-item vr" draggable="true" data-node="vars/getVarNum">获取数字变量 <span
+                                    class="node-type-badge">变量</span></div>
+                        </div>
+                    </details>
+
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>类型转换</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body" style="padding-bottom:10px;">
+                            <div class="node-item cvt" draggable="true" data-node="convert/numToStr">数字转字符串 <span
+                                    class="node-type-badge">转换</span></div>
+                            <div class="node-item cvt" draggable="true" data-node="convert/stringToNumber">字符串转数字 <span
+                                    class="node-type-badge">转换</span></div>
+                            <div class="node-item cvt" draggable="true" data-node="convert/strToPlayer">字符串获取玩家 <span
+                                    class="node-type-badge">转换</span></div>
+                            <div class="node-item cvt" draggable="true" data-node="convert/playerToName">玩家转名字 <span
+                                    class="node-type-badge">转换</span></div>
+                            <div class="node-item cvt" draggable="true" data-node="convert/numToInt">数字取整 <span
+                                    class="node-type-badge">转换</span></div>
+                            <div class="node-item cvt" draggable="true" data-node="convert/numAbsVal">数字绝对值 <span
+                                    class="node-type-badge">转换</span></div>
+                            <div class="node-item cvt" draggable="true" data-node="convert/locationToStr">坐标转字符串 <span
+                                    class="node-type-badge">转换</span></div>
+                        </div>
+                    </details>
+
+                </div>
+
+
+                <div id="blocklyDiv">
+                    <div id="canvas-hint">右键画布添加节点 · 从左侧面板拖入节点 · 拖拽连线构建逻辑</div>
+                </div>
+            </div>
+
+
+            <div id="view-config" class="view-section">
+                <div class="max-w-5xl mx-auto p-8 w-full">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+
+                        <div class="cfg-card">
+                            <div class="cfg-card-title text-blue-600">核心元数据</div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="cfg-label">插件名称
+                                        <span id="pluginName-hint"
+                                            class="ml-2 text-red-500 font-normal normal-case hidden"
+                                            style="font-size:10px;"></span>
+                                    </label>
+                                    <input type="text" id="pluginName" oninput="onPluginNameInput()" class="cfg-input"
+                                        placeholder="MagicPlugin">
+                                    <p class="text-gray-400 mt-1" style="font-size:10px;">只能包含字母、数字和连字符，不能以数字开头</p>
+                                </div>
+                                <div>
+                                    <label class="cfg-label">版本号</label>
+                                    <input type="text" id="pluginVersion" oninput="syncAllFiles()" value="1.0.0"
+                                        class="cfg-input">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="cfg-label">主类路径
+                                        <span id="mainClass-hint"
+                                            class="ml-2 text-red-500 font-normal normal-case hidden"
+                                            style="font-size:10px;"></span>
+                                    </label>
+                                    <input type="text" id="mainClass" oninput="onMainClassInput()" class="cfg-input"
+                                        placeholder="me.yourname.myplugin.Main" style="transition:border-color .15s;">
+                                    <p class="text-gray-400 mt-1" style="font-size:10px;">格式：小写包名.小写包名.大写类名，例如
+                                        <code>me.steve.myplugin.Main</code>
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="cfg-label">请选择游戏版本</label>
+                                    <select id="apiVersion" onchange="syncAllFiles()" class="cfg-input">
+                                        <option value="1.21" selected>1.21</option>
+                                        <option value="1.20">1.20</option>
+                                        <option value="1.19">1.19</option>
+                                        <option value="1.16">1.16</option>
+                                        <option value="1.13">1.13</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="cfg-label">加载时机</label>
+                                    <select id="loadTime" onchange="syncAllFiles()" class="cfg-input">
+                                        <option value="POSTWORLD">POSTWORLD（默认）</option>
+                                        <option value="STARTUP">STARTUP（极早）</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div class="cfg-card">
+                            <div class="cfg-card-title text-indigo-600">开发者信息</div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="cfg-label">作者</label>
+                                    <input type="text" id="author" oninput="syncAllFiles()" placeholder="YourName"
+                                        class="cfg-input">
+                                </div>
+                                <div>
+                                    <label class="cfg-label">网站</label>
+                                    <input type="text" id="website" oninput="syncAllFiles()" placeholder="https://..."
+                                        class="cfg-input">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="cfg-label">插件简介</label>
+                                    <textarea id="description" oninput="syncAllFiles()" rows="3"
+                                        class="cfg-input resize-none"></textarea>
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="cfg-label">软依赖（英文逗号分隔）</label>
+                                    <input type="text" id="softDepend" oninput="syncAllFiles()"
+                                        placeholder="Vault, PlaceholderAPI" class="cfg-input">
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div class="cfg-card">
+                            <div class="cfg-card-title text-amber-600">Maven / 构建配置</div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="cfg-label">Group ID</label>
+                                    <input type="text" id="groupId" oninput="syncAllFiles()" placeholder="me.yourname"
+                                        class="cfg-input">
+                                </div>
+                                <div>
+                                    <label class="cfg-label">Artifact ID</label>
+                                    <input type="text" id="artifactId" oninput="syncAllFiles()" placeholder="myplugin"
+                                        class="cfg-input">
+                                </div>
+                                <div>
+                                    <label class="cfg-label">Java 版本</label>
+                                    <select id="javaVersion" onchange="syncAllFiles()" class="cfg-input">
+                                        <option value="21" selected>Java 21</option>
+                                        <option value="17">Java 17</option>
+                                        <option value="11">Java 11</option>
+                                        <option value="8">Java 8</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="cfg-label">Spigot 依赖版本</label>
+                                    <select id="spigotVersion" onchange="syncAllFiles()" class="cfg-input">
+                                        <option value="1.21.4-R0.1-SNAPSHOT" selected>1.21.4</option>
+                                        <option value="1.21-R0.1-SNAPSHOT">1.21</option>
+                                        <option value="1.20.4-R0.1-SNAPSHOT">1.20.4</option>
+                                        <option value="1.19.4-R0.1-SNAPSHOT">1.19.4</option>
+                                        <option value="1.16.5-R0.1-SNAPSHOT">1.16.5</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div class="cfg-card">
+                            <div class="cfg-card-title text-rose-600">config.yml 默认值</div>
+                            <div class="space-y-3">
+                                <div id="config-entries" class="space-y-2"></div>
+                                <button onclick="addConfigEntry()"
+                                    class="text-xs text-blue-500 hover:text-blue-700 font-semibold py-1">+
+                                    添加配置项</button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+
+            <div id="view-source" class="view-section" style="flex-direction:column;">
+                <div id="source-tabs">
+                    <div class="src-tab active" onclick="switchSrcTab('java')" id="srctab-java">Main.java</div>
+                    <div class="src-tab" onclick="switchSrcTab('yml')" id="srctab-yml">plugin.yml</div>
+                    <div class="src-tab" onclick="switchSrcTab('cfg')" id="srctab-cfg">config.yml</div>
+                    <div class="src-tab" onclick="switchSrcTab('pom')" id="srctab-pom">pom.xml</div>
+                </div>
+                <div id="source-editors" style="flex:1;position:relative;">
+                    <div class="src-editor-pane active" id="pane-java">
+                        <div id="editor-java" style="width:100%;height:100%;"></div>
+                    </div>
+                    <div class="src-editor-pane" id="pane-yml">
+                        <div id="editor-yml" style="width:100%;height:100%;"></div>
+                    </div>
+                    <div class="src-editor-pane" id="pane-cfg">
+                        <div id="editor-cfg" style="width:100%;height:100%;"></div>
+                    </div>
+                    <div class="src-editor-pane" id="pane-pom">
+                        <div id="editor-pom" style="width:100%;height:100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+    </div>
+
+
+    
+    <div id="view-market" class="view-section"
+        style="flex-direction:column; overflow-y:auto; background:#f0f2f5; position:absolute; inset:0; z-index:10;">
+
+        <br><br>
+
+        <!-- 顶部搜索栏 -->
+        <div
+            style="background:#fff; border-bottom:1.5px solid #e8edf5; padding:20px 32px; position:sticky; top:0; z-index:20; box-shadow:0 2px 8px rgba(0,0,0,.04);">
+            <div style="max-width:1100px; margin:0 auto; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:240px; position:relative;">
+                    <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4;" width="14"
+                        height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    <input id="market-search" type="text" placeholder="搜索模板名称、标签…" oninput="marketSearch(this.value)"
+                        style="width:100%;background:#f8fafd;border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px 9px 34px;font-size:13px;outline:none;color:#1a2035;transition:border-color .15s;">
+                </div>
+                <div id="market-cats" style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="mkt-cat active" data-cat="all" onclick="marketSetCat('all')">全部</button>
+                    <button class="mkt-cat" data-cat="utility" onclick="marketSetCat('utility')">实用工具</button>
+                    <button class="mkt-cat" data-cat="game" onclick="marketSetCat('game')">游戏玩法</button>
+                    <button class="mkt-cat" data-cat="economy" onclick="marketSetCat('economy')">经济系统</button>
+                    <button class="mkt-cat" data-cat="admin" onclick="marketSetCat('admin')">管理辅助</button>
+                    <button class="mkt-cat" data-cat="social" onclick="marketSetCat('social')">社交互动</button>
+                </div>
+                <!-- 由 market.js 根据登录状态动态渲染 -->
+                <div id="market-action-btn"></div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div style="max-width:1100px; margin:28px auto 80px; padding:0 32px; width:100%;">
+
+            <!-- 统计栏 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+                <div id="market-count" style="font-size:12px; color:#9aa3b2;"></div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:12px;color:#9aa3b2;">排序：</span>
+                    <select id="market-sort" onchange="marketSort(this.value)"
+                        style="background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;color:#3a4560;outline:none;cursor:pointer;">
+                        <option value="hot">最热门</option>
+                        <option value="new">最新发布</option>
+                        <option value="alpha">名称排序</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 加载中占位 -->
+            <div id="market-loading"
+                style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 0;gap:16px;">
+                <div class="mkt-spinner"></div>
+                <div style="font-size:13px;color:#b0b8c8;">正在加载模板…</div>
+            </div>
+
+            <!-- 错误占位 -->
+            <div id="market-error"
+                style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:80px 0;gap:12px;">
+                <svg width="48" height="48" fill="none" stroke="#d0d5e0" stroke-width="1.5" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                </svg>
+                <div style="font-size:14px;font-weight:600;color:#9aa3b2;">无法连接到模板服务器</div>
+                <div id="market-error-msg" style="font-size:12px;color:#b0b8c8;max-width:320px;text-align:center;">
+                </div>
+                <button onclick="marketLoad()"
+                    style="margin-top:8px;background:#f0f3f8;border:none;border-radius:8px;padding:8px 20px;font-size:12px;font-weight:600;color:#4a5568;cursor:pointer;">重试</button>
+            </div>
+
+            <!-- 空结果占位 -->
+            <div id="market-empty"
+                style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:80px 0;gap:12px;">
+                <svg width="48" height="48" fill="none" stroke="#d0d5e0" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <div style="font-size:14px;font-weight:600;color:#9aa3b2;">没有找到相关模板</div>
+                <div style="font-size:12px;color:#b0b8c8;">换个关键词或分类试试吧</div>
+            </div>
+
+            <!-- 卡片网格 -->
+            <div id="market-grid"
+                style="display:none; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px;"></div>
+        </div>
+    </div>
+
+    <!-- 模板详情弹窗 -->
+    <div id="marketDetailModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeMarketDetail()"></div>
+        <div
+            style="position:relative;background:#fff;border-radius:20px;box-shadow:0 24px 48px rgba(0,0,0,.22);width:580px;max-width:94vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;animation:modalFadeIn .2s ease;">
+            <div id="mdt-header" style="padding:24px 28px 0;flex-shrink:0;">
+                <div style="display:flex;align-items:flex-start;gap:16px;">
+                    <div id="mdt-icon"
+                        style="width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span id="mdt-name" style="font-size:17px;font-weight:700;color:#1a2035;"></span>
+                            <span id="mdt-version"
+                                style="font-size:10px;background:#f4f6fb;color:#7a8494;border-radius:4px;padding:1px 7px;font-family:monospace;"></span>
+                        </div>
+                        <div id="mdt-author" style="font-size:12px;color:#9aa3b2;margin-top:3px;"></div>
+                        <div id="mdt-tags" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;"></div>
+                    </div>
+                    <button onclick="closeMarketDetail()"
+                        style="background:none;border:none;cursor:pointer;color:#9aa3b2;font-size:20px;line-height:1;padding:2px 6px;">×</button>
+                </div>
+                <div id="mdt-desc"
+                    style="font-size:13px;color:#4a5568;line-height:1.7;margin:16px 0;padding:14px 16px;background:#f8fafd;border-radius:10px;border:1px solid #e8edf5;">
+                </div>
+                <div style="display:flex;gap:20px;padding-bottom:16px;border-bottom:1px solid #f0f3f8;">
+                    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#9aa3b2;">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24">
+                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span id="mdt-downloads"></span> 次下载
+                    </div>
+                    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#9aa3b2;">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <span id="mdt-date"></span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#9aa3b2;">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+                            <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        <span id="mdt-nodes"></span> 个节点
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding:16px 28px 24px;flex-shrink:0;display:flex;gap:10px;border-top:1px solid #f0f3f8;">
+                <button id="mdt-import-btn" onclick="marketImportCurrent()"
+                    style="flex:1;background:#1a2035;color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;"
+                    onmouseover="this.style.background='#2a3555'" onmouseout="this.style.background='#1a2035'">
+                    <svg style="vertical-align:-2px;margin-right:5px;" width="13" height="13" fill="none"
+                        stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    导入到工作区
+                </button>
+                <button onclick="closeMarketDetail()"
+                    style="padding:11px 20px;background:#f0f3f8;color:#4a5568;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传模板弹窗 -->
+    <div id="uploadModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeUploadModal()"></div>
+        <div
+            style="position:relative;background:#fff;border-radius:20px;box-shadow:0 24px 48px rgba(0,0,0,.22);width:500px;max-width:94vw;overflow:hidden;animation:modalFadeIn .2s ease;">
+            <div style="padding:24px 28px 0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+                    <div style="font-size:16px;font-weight:700;color:#1a2035;">上传模板</div>
+                    <button onclick="closeUploadModal()"
+                        style="background:none;border:none;cursor:pointer;color:#9aa3b2;font-size:20px;line-height:1;padding:2px 6px;">×</button>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <!-- 当前用户信息 -->
+                    <div
+                        style="display:flex;align-items:center;gap:8px;background:#f8fafd;border:1px solid #e8edf5;border-radius:8px;padding:8px 12px;">
+                        <svg width="13" height="13" fill="none" stroke="#9aa3b2" stroke-width="2" viewBox="0 0 24 24">
+                            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <span style="font-size:12px;color:#6b7890;">上传者：</span>
+                        <span id="up-author-display" style="font-size:12px;font-weight:700;color:#1a2035;"></span>
+                        <span style="font-size:11px;color:#b0b8c8;margin-left:auto;">模板审核通过后将公开显示</span>
+                    </div>
+                    <div>
+                        <label class="cfg-label">模板名称 <span style="color:#ef4444;">*</span></label>
+                        <input id="up-name" class="cfg-input" placeholder="例如：欢迎消息插件" maxlength="60">
+                    </div>
+                    <div>
+                        <label class="cfg-label">简短描述 <span style="color:#ef4444;">*</span></label>
+                        <textarea id="up-desc" class="cfg-input" placeholder="简述这个模板的功能（最多500字）" maxlength="500"
+                            rows="3" style="resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div>
+                            <label class="cfg-label">分类 <span style="color:#ef4444;">*</span></label>
+                            <select id="up-cat" class="cfg-input" style="cursor:pointer;">
+                                <option value="">请选择分类</option>
+                                <option value="utility">实用工具</option>
+                                <option value="game">游戏玩法</option>
+                                <option value="economy">经济系统</option>
+                                <option value="admin">管理辅助</option>
+                                <option value="social">社交互动</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="cfg-label">版本标注</label>
+                            <input id="up-version" class="cfg-input" placeholder="例如：1.0" maxlength="16">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="cfg-label">标签（逗号分隔，最多5个）</label>
+                        <input id="up-tags" class="cfg-input" placeholder="例如：聊天,欢迎,消息" maxlength="60">
+                    </div>
+                    <div>
+                        <label class="cfg-label">蓝图文件（.mcbp）<span style="color:#ef4444;">*</span></label>
+                        <div id="up-drop-area"
+                            style="border:2px dashed #e2e8f0;border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:#f8fafd;"
+                            onclick="document.getElementById('up-file').click()"
+                            ondragover="event.preventDefault();this.style.borderColor='#4a80ff'"
+                            ondragleave="this.style.borderColor='#e2e8f0'" ondrop="uploadHandleDrop(event)">
+                            <svg style="margin:0 auto 8px;display:block;opacity:.4;" width="28" height="28" fill="none"
+                                stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                            <div id="up-file-label" style="font-size:12px;color:#9aa3b2;">点击或拖拽 .mcbp 文件到此处</div>
+                        </div>
+                        <input type="file" id="up-file" accept=".mcbp,.json" style="display:none"
+                            onchange="uploadHandleFile(this)">
+                    </div>
+                </div>
+            </div>
+            <div style="padding:20px 28px 24px;display:flex;gap:10px;margin-top:4px;">
+                <button onclick="submitUpload()" class="auth-submit-btn"
+                    style="flex:1;border-radius:10px;padding:11px;font-size:13px;">
+                    提交上传
+                </button>
+                <button onclick="closeUploadModal()"
+                    style="padding:11px 20px;background:#f0f3f8;color:#4a5568;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-about" class="view-section"
+        style="flex-direction:column; overflow-y:auto; background:#f0f2f5; position:absolute; inset:0; z-index:10;">
+        <div style="max-width:680px; margin:88px auto 80px; padding:0 24px; width:100%;">
+
+
+            <div style="display:flex; align-items:center; gap:16px; margin-bottom:36px;">
+                <svg width="44" height="44" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"
+                    style="flex-shrink:0;">
+                    <rect width="30" height="30" rx="4" fill="#1a0a0a" />
+                    <rect x="13" y="7" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="13" y="13" width="4" height="4" fill="#ff2222" opacity="0.95" />
+                    <rect x="7" y="13" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="19" y="13" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="13" y="19" width="4" height="4" fill="#cc1a1a" />
+                    <rect x="7" y="7" width="4" height="4" fill="#3d0000" />
+                    <rect x="19" y="7" width="4" height="4" fill="#3d0000" />
+                    <rect x="7" y="19" width="4" height="4" fill="#3d0000" />
+                    <rect x="19" y="19" width="4" height="4" fill="#3d0000" />
+                    <rect x="14" y="14" width="2" height="2" fill="#ff8888" />
+                </svg>
+                <div>
+                    <div style="font-size:20px; font-weight:700; color:#1a2035; letter-spacing:-.3px;">RedstoneCode
+                        Studio</div>
+                    <div
+                        style="font-size:11px; color:#9aa3b2; margin-top:4px; font-family:monospace; display:flex; gap:10px; align-items:center;">
+                        <span>1.3.0</span>
+                        <span
+                            style="width:3px;height:3px;border-radius:50%;background:#d0d5e0;display:inline-block;"></span>
+                        <span>RC Studio</span>
+                        <span
+                            style="width:3px;height:3px;border-radius:50%;background:#d0d5e0;display:inline-block;"></span>
+                        <span
+                            style="background:#fff0f0; color:#cc2222; border:1px solid #ffd0d0; border-radius:4px; padding:1px 7px; font-size:10px;">GPL
+                            v3</span>
+                    </div>
+                </div>
+            </div>
+
+
+            <div
+                style="background:#fff; border-radius:14px; border:1.5px solid #e8edf5; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.04); margin-bottom:12px;">
+                <div
+                    style="font-size:10px; font-weight:700; color:#b0b8c8; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:10px;">
+                    关于本项目</div>
+                <p style="font-size:13px; color:#3a4560; line-height:1.8; margin:0;">
+                    RedstoneCode Studio（RC Studio） 是一个可视化 Minecraft 插件开发工具。通过节点图拖拽构建插件逻辑，自动生成完整的 Java 源码、<code
+                        style="font-size:12px;background:#f4f6fb;padding:1px 5px;border-radius:4px;">plugin.yml</code>、<code
+                        style="font-size:12px;background:#f4f6fb;padding:1px 5px;border-radius:4px;">config.yml</code> 及
+                    Maven <code
+                        style="font-size:12px;background:#f4f6fb;padding:1px 5px;border-radius:4px;">pom.xml</code>，无需手写样板代码，即可快速上手开发
+                    Bukkit / Spigot 插件。
+                </p>
+            </div>
+
+            <div
+                style="background:#fff; border-radius:14px; border:1.5px solid #e8edf5; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.04); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
+                <div>
+                    <div style="font-size:12px; font-weight:700; color:#1a2035; margin-bottom:6px;">网络模式</div>
+                    <div style="font-size:12px; color:#6b7890; line-height:1.6;">
+                        当前为 <span data-net-label>离线</span> 模式。启用在线后可访问模板市场与账户功能。
+                    </div>
+                </div>
+                <label class="mode-toggle" title="切换离线/在线模式">
+                    <span class="mode-text" data-net-label>离线</span>
+                    <input id="online-mode-toggle-about" type="checkbox" onchange="toggleOnlineMode(this.checked)">
+                    <span class="mode-switch" aria-hidden="true"></span>
+                </label>
+            </div>
+
+
+            <div
+                style="background:#fff; border-radius:14px; border:1.5px solid #e8edf5; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.04); margin-bottom:12px;">
+                <div
+                    style="font-size:10px; font-weight:700; color:#b0b8c8; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:14px;">
+                    开源组件 &amp; 致谢</div>
+
+
+                <div style="display:grid; grid-template-columns:1fr auto; gap:0;">
+
+
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; flex-direction:column; gap:3px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span
+                                style="font-size:13px; font-weight:600; color:#1a2035; font-family:monospace;">LiteGraph.js</span>
+                            <span style="font-size:10px; color:#9aa3b2; font-family:monospace;">0.7.18</span>
+                            <span
+                                style="font-size:10px; background:#f0f7ff; color:#3a7bd4; border:1px solid #d0e4ff; border-radius:4px; padding:1px 6px;">MIT</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890;">节点图画布引擎，提供可视化逻辑编辑能力</div>
+                    </div>
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; align-items:center; padding-left:16px;">
+                        <a href="https://github.com/jagenjo/litegraph.js" target="_blank"
+                            style="font-size:11px; color:#9aa3b2; text-decoration:none;"
+                            onmouseover="this.style.color='#4a6fa5'" onmouseout="this.style.color='#9aa3b2'">GitHub
+                            ↗</a>
+                    </div>
+
+
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; flex-direction:column; gap:3px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:13px; font-weight:600; color:#1a2035; font-family:monospace;">Ace
+                                Editor</span>
+                            <span style="font-size:10px; color:#9aa3b2; font-family:monospace;">1.23.4</span>
+                            <span
+                                style="font-size:10px; background:#f0f7ff; color:#3a7bd4; border:1px solid #d0e4ff; border-radius:4px; padding:1px 6px;">BSD</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890;">源码编辑器，支持 Java / YAML / XML 语法高亮</div>
+                    </div>
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; align-items:center; padding-left:16px;">
+                        <a href="https://github.com/ajaxorg/ace" target="_blank"
+                            style="font-size:11px; color:#9aa3b2; text-decoration:none;"
+                            onmouseover="this.style.color='#4a6fa5'" onmouseout="this.style.color='#9aa3b2'">GitHub
+                            ↗</a>
+                    </div>
+
+
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; flex-direction:column; gap:3px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span
+                                style="font-size:13px; font-weight:600; color:#1a2035; font-family:monospace;">Tailwind
+                                CSS</span>
+                            <span style="font-size:10px; color:#9aa3b2; font-family:monospace;">CDN</span>
+                            <span
+                                style="font-size:10px; background:#f0f7ff; color:#3a7bd4; border:1px solid #d0e4ff; border-radius:4px; padding:1px 6px;">MIT</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890;">实用优先的 CSS 框架，用于界面布局与样式</div>
+                    </div>
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; align-items:center; padding-left:16px;">
+                        <a href="https://github.com/tailwindlabs/tailwindcss" target="_blank"
+                            style="font-size:11px; color:#9aa3b2; text-decoration:none;"
+                            onmouseover="this.style.color='#4a6fa5'" onmouseout="this.style.color='#9aa3b2'">GitHub
+                            ↗</a>
+                    </div>
+
+
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; flex-direction:column; gap:3px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:13px; font-weight:600; color:#1a2035; font-family:monospace;">Spigot
+                                / Bukkit API</span>
+                            <span style="font-size:10px; color:#9aa3b2; font-family:monospace;">1.20.x</span>
+                            <span
+                                style="font-size:10px; background:#f5fff5; color:#2a8a3a; border:1px solid #c0e8c0; border-radius:4px; padding:1px 6px;">LGPL</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890;">生成的插件代码所依赖的 Minecraft 服务端 API</div>
+                    </div>
+                    <div
+                        style="padding:10px 0; border-bottom:1px solid #f0f3f8; display:flex; align-items:center; padding-left:16px;">
+                        <a href="https://hub.spigotmc.org/stash/projects/SPIGOT" target="_blank"
+                            style="font-size:11px; color:#9aa3b2; text-decoration:none;"
+                            onmouseover="this.style.color='#4a6fa5'" onmouseout="this.style.color='#9aa3b2'">官网 ↗</a>
+                    </div>
+
+
+                    <div style="padding:10px 0; display:flex; flex-direction:column; gap:3px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:13px; font-weight:600; color:#1a2035; font-family:monospace;">Apache
+                                Maven</span>
+                            <span style="font-size:10px; color:#9aa3b2; font-family:monospace;">3.x</span>
+                            <span
+                                style="font-size:10px; background:#fffaf0; color:#c07020; border:1px solid #ffe4b0; border-radius:4px; padding:1px 6px;">Apache-2.0</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890;">生成 pom.xml 构建描述文件，用于项目编译打包</div>
+                    </div>
+                    <div style="padding:10px 0; display:flex; align-items:center; padding-left:16px;">
+                        <a href="https://maven.apache.org" target="_blank"
+                            style="font-size:11px; color:#9aa3b2; text-decoration:none;"
+                            onmouseover="this.style.color='#4a6fa5'" onmouseout="this.style.color='#9aa3b2'">官网 ↗</a>
+                    </div>
+
+
+                    <div style="padding:10px 0; display:flex; flex-direction:column; gap:3px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span
+                                style="font-size:13px; font-weight:600; color:#1a2035; font-family:monospace;">Q群的群友们</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890;">感谢他们给我的各种奇思妙想<br>加入Q群：768838110</div>
+                    </div>
+                    <div style="padding:10px 0; display:flex; align-items:center; padding-left:16px;">
+                        <a href="https://qm.qq.com/q/nTyw4DWUfu" target="_blank"
+                            style="font-size:11px; color:#9aa3b2; text-decoration:none;"
+                            onmouseover="this.style.color='#4a6fa5'" onmouseout="this.style.color='#9aa3b2'">加入 ↗</a>
+                    </div>
+
+                </div>
+            </div>
+
+
+            <div
+                style="background:#fff; border-radius:14px; border:1.5px solid #e8edf5; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.04); margin-bottom:12px;">
+                <div
+                    style="font-size:10px; font-weight:700; color:#b0b8c8; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:14px;">
+                    法律声明</div>
+
+
+                <div style="margin-bottom:16px;">
+                    <div style="font-size:12px; font-weight:600; color:#4a5568; margin-bottom:6px;">本项目采用 GNU General
+                        Public License v3.0 协议开源。<br>
+                        使用本工具生成的源代码、配置文件及其编译产物，其所有权归使用者所有，RC Studio 不对生成代码的版权主张任何权利。<br>
+                        本工具为纯客户端处理，所有逻辑设计与配置文件均在用户本地生成，RC Studio 不会收集、存储或上传用户的任何代码逻辑或服务器配置数据。
+                    </div>
+                </div>
+
+
+                <div style="background:#fffbf0; border:1px solid #fdedc0; border-radius:8px; padding:12px 14px;">
+                    <div style="font-size:11px; font-weight:700; color:#a07020; margin-bottom:6px;">⚠ 免责声明</div>
+                    <p style="font-size:12px; color:#7a6030; line-height:1.7; margin:0;">
+                        本工具自动生成的代码仅供参考，不保证在所有 Minecraft 服务端版本上完全兼容。<br><b>用户在使用“网络请求”或“执行控制台指令”等节点时需自行承担风险。RC Studio
+                            不对因用户逻辑设计不当导致的服务器被攻击、数据泄露或恶意指令执行承担责任。</b><br>RedstoneCode Studio 与 Mojang Studios、Microsoft
+                        及
+                        SpigotMC 团队无任何从属或合作关系。"Minecraft" 为 Mojang AB 的注册商标，本项目不以任何方式主张对该商标的所有权。
+                    </p>
+                </div>
+            </div>
+
+
+            <div
+                style="background:#fff; border-radius:14px; border:1.5px solid #e8edf5; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.04); margin-bottom:12px;">
+                <div
+                    style="font-size:10px; font-weight:700; color:#b0b8c8; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:14px;">
+                    版本历史</div>
+                <div style="position:relative; padding-left:20px;">
+
+                    <div style="position:absolute; left:5px; top:8px; bottom:8px; width:1px; background:#e8edf5;"></div>
+
+                    <div style="margin-bottom:16px; position:relative;">
+                        <div
+                            style="position:absolute; left:-15px; top:4px; width:7px; height:7px; border-radius:50%; background:#cc2222; border:2px solid #fff; box-shadow:0 0 0 1px #cc2222;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                            <span
+                                style="font-size:12px; font-weight:700; color:#1a2035; font-family:monospace;">v1.3.0</span>
+                            <span
+                                style="font-size:10px; background:#fff0f0; color:#cc2222; border:1px solid #ffd0d0; border-radius:4px; padding:1px 6px;">最新</span>
+                            <span style="font-size:11px; color:#b0b8c8;"></span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890; line-height:1.6;">
+                            <ul>
+                                <li>增加对1.21.x版本的支持</li>
+                                <li>增加“坐标转字符串”模块</li>
+                                <li>修复些许已知问题</li>
+                                <li>修复程序没有bug的问题</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px; position:relative;">
+                        <div
+                            style="position:absolute; left:-15px; top:4px; width:7px; height:7px; border-radius:50%; background:#cc2222; border:2px solid #fff; box-shadow:0 0 0 1px #cc2222;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                            <span
+                                style="font-size:12px; font-weight:700; color:#1a2035; font-family:monospace;">v1.1.0</span>
+                            <span style="font-size:11px; color:#b0b8c8;">阶段性更新</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890; line-height:1.6;">新增模板市场功能，用户可通过模板市场下载、上传已有模板<br>
+                            <ul>
+                                <li>优化部分显示内容</li>
+                                <li>修复已知问题</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px; position:relative;">
+                        <div
+                            style="position:absolute; left:-15px; top:4px; width:7px; height:7px; border-radius:50%; background:#cc2222; border:2px solid #fff; box-shadow:0 0 0 1px #cc2222;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                            <span style="font-size:12px; font-weight:700; color:#1a2035; font-family:monospace;">v1.0.0
+                                & v1.0.1</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890; line-height:1.6;">正式版发布<br>
+                            <ul>
+                                <li>[v1.0.1 更新]：修正了部分前端文案错误</li>
+                                <li>修复部分接口前端定义后没有进行处理；</li>
+                                <li>修复 pom.xml 语法错误；</li>
+                                <li>将构建产物路径从相对路径更换为绝对路径；</li>
+                                <li>优化安全性问题，防止 .mcbp 恶意注入</li>
+                                <li>增加编译超时</li>
+                                <li>修复些许已知问题</li>
+                                <li>想吃薯条没吃上（[v1.0.1 更新]：吃上了）</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px; position:relative;">
+                        <div
+                            style="position:absolute; left:-15px; top:4px; width:7px; height:7px; border-radius:50%; background:#d0d5e0; border:2px solid #fff; box-shadow:0 0 0 1px #d0d5e0;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                            <span
+                                style="font-size:12px; font-weight:700; color:#4a5568; font-family:monospace;">v0.2.1</span>
+                                <span style="font-size:11px; color:#b0b8c8;">q(≧▽≦q)</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890; line-height:1.6;">修复跨平台兼容性问题</div>
+                    </div>
+
+                    <div style="margin-bottom:16px; position:relative;">
+                        <div
+                            style="position:absolute; left:-15px; top:4px; width:7px; height:7px; border-radius:50%; background:#d0d5e0; border:2px solid #fff; box-shadow:0 0 0 1px #d0d5e0;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                            <span
+                                style="font-size:12px; font-weight:700; color:#4a5568; font-family:monospace;">v0.1.0</span>
+                            <span style="font-size:11px; color:#b0b8c8;">Ciallo～ (∠・ω< )⌒★</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890; line-height:1.6;">重构节点图引擎；修复已知问题</div>
+                    </div>
+
+                    <div style="margin-bottom:16px; position:relative;">
+                        <div
+                            style="position:absolute; left:-15px; top:4px; width:7px; height:7px; border-radius:50%; background:#d0d5e0; border:2px solid #fff; box-shadow:0 0 0 1px #d0d5e0;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
+                            <span
+                                style="font-size:12px; font-weight:700; color:#4a5568; font-family:monospace;">v0.x</span>
+                            <span style="font-size:11px; color:#b0b8c8;">Develop</span>
+                        </div>
+                        <div style="font-size:12px; color:#6b7890; line-height:1.6;">最基础的版本，只支持很少的操作</div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div style="text-align:center; padding-top:20px;">
+                <p style="font-size:11px; color:#c0c8d8; margin:0; line-height:2;">
+                    © 2026 Benxp. &nbsp;·&nbsp; Licensed under the GNU GPL v3.<br>
+                    <span style="font-size:10px;">Not affiliated with Mojang Studios or Microsoft.</span>
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+    </main>
+    </div>
+
+
+    <div id="customModal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-icon"></span>
+                <h3 class="modal-title">提示</h3>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn" onclick="closeModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 离线引导弹窗 ===== -->
+    <div id="offlineGuideModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeOfflineGuide()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-icon"></span>
+                <h3 class="modal-title">模板市场不可用</h3>
+                <button class="modal-close" onclick="closeOfflineGuide()">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin:0 0 6px 0;">当前为离线模式，模板市场等在线功能已被禁用。</p>
+                <p style="margin:0;color:#6b7280;font-size:12px;">可在右上角切换到在线模式以访问模板市场。</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn" onclick="closeOfflineGuide()">保持离线</button>
+                <button class="modal-btn" onclick="requestOnlineEnable('market')"
+                    style="background:#1a2035;color:#fff;border-color:#1a2035;">开启在线模式</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 在线声明弹窗 ===== -->
+    <div id="onlineDeclModal" class="modal hidden">
+        <div class="modal-overlay" onclick="cancelOnlineDecl()"></div>
+        <div class="modal-content" style="width:520px;max-width:92%;">
+            <div class="modal-header">
+                <span class="modal-icon"></span>
+                <h3 class="modal-title">在线功能声明</h3>
+                <button class="modal-close" onclick="cancelOnlineDecl()">×</button>
+            </div>
+            <div class="modal-body" style="line-height:1.7;">
+                <p style="margin:0 0 8px 0;">启用在线模式后，RC Studio 将访问网络以提供模板市场相关功能。</p>
+                <ul style="margin:0 0 10px 18px;padding:0;color:#4b5563;font-size:12px;">
+                    <li>会连接模板市场服务器以获取模板列表、下载与上传。</li>
+                    <li>登录/注册等操作将与远程服务通信。</li>
+                    <li>除上述功能外，本地项目与代码不会被自动上传。</li>
+                </ul>
+                <div style="font-size:12px;color:#6b7280;">是否同意开启在线模式？</div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn" onclick="cancelOnlineDecl()">取消</button>
+                <button class="modal-btn" onclick="acceptOnlineDecl()"
+                    style="background:#1a2035;color:#fff;border-color:#1a2035;">同意并开启</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 账户登录/注册弹窗 ===== -->
+    <div id="authModal" class="modal hidden" style="z-index:20000;">
+        <div class="modal-overlay" onclick="closeAuthModal()"></div>
+        <div class="auth-modal-card">
+            <!-- 弹窗头部 -->
+            <div class="auth-modal-header">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <svg width="36" height="36" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"
+                        style="flex-shrink:0;">
+                        <rect width="30" height="30" rx="4" fill="rgba(255,255,255,.12)" />
+                        <rect x="13" y="7" width="4" height="4" fill="#cc3333" />
+                        <rect x="13" y="13" width="4" height="4" fill="#ff4444" opacity=".95" />
+                        <rect x="7" y="13" width="4" height="4" fill="#cc3333" />
+                        <rect x="19" y="13" width="4" height="4" fill="#cc3333" />
+                        <rect x="13" y="19" width="4" height="4" fill="#cc3333" />
+                        <rect x="7" y="7" width="4" height="4" fill="rgba(255,255,255,.1)" />
+                        <rect x="19" y="7" width="4" height="4" fill="rgba(255,255,255,.1)" />
+                        <rect x="7" y="19" width="4" height="4" fill="rgba(255,255,255,.1)" />
+                        <rect x="19" y="19" width="4" height="4" fill="rgba(255,255,255,.1)" />
+                        <rect x="14" y="14" width="2" height="2" fill="#ffaaaa" />
+                    </svg>
+                    <div>
+                        <div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:-.2px;">RC Studio 账户</div>
+                        <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px;">模板市场下载需要登录</div>
+                    </div>
+                </div>
+                <button onclick="closeAuthModal()"
+                    style="background:rgba(255,255,255,.1);border:none;border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:18px;transition:background .15s;line-height:1;"
+                    onmouseover="this.style.background='rgba(255,255,255,.2)'"
+                    onmouseout="this.style.background='rgba(255,255,255,.1)'">×</button>
+            </div>
+
+            <!-- 弹窗体 -->
+            <div style="padding:0 24px 24px;">
+                <!-- 来源提示（未登录点下载时显示） -->
+                <div id="auth-hint-msg" class="auth-hint-box" style="margin-top:18px;">
+                    <svg style="display:inline;vertical-align:-2px;margin-right:4px;" width="13" height="13" fill="none"
+                        stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v4M12 16h.01" />
+                    </svg>
+                    <span id="auth-hint-text"></span>
+                </div>
+
+                <!-- Tab 切换 -->
+                <div style="display:flex;border-bottom:1.5px solid #f0f3f8;margin:18px 0 0;">
+                    <button id="authtab-login" class="auth-tab auth-tab-active"
+                        onclick="switchAuthTab('login')">登录</button>
+                    <button id="authtab-register" class="auth-tab" onclick="switchAuthTab('register')">注册</button>
+                </div>
+
+                <!-- 错误提示 -->
+                <div id="auth-error" class="auth-error-box" style="margin-top:14px;">
+                    <svg style="display:inline;vertical-align:-2px;margin-right:4px;" width="12" height="12" fill="none"
+                        stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v4M12 16h.01" />
+                    </svg>
+                    <span id="auth-error-text"></span>
+                </div>
+
+                <!-- 登录表单 -->
+                <form id="auth-login-form" onsubmit="handleLogin(event)"
+                    style="display:flex;flex-direction:column;gap:14px;margin-top:16px;">
+                    <div>
+                        <label class="cfg-label">用户名 / 邮箱</label>
+                        <input id="auth-login-identity" class="cfg-input" type="text" placeholder="输入用户名或邮箱地址"
+                            autocomplete="username" spellcheck="false">
+                    </div>
+                    <div>
+                        <label class="cfg-label">密码</label>
+                        <div style="position:relative;">
+                            <input id="auth-login-password" class="cfg-input" type="password" placeholder="输入密码"
+                                autocomplete="current-password" style="padding-right:40px;">
+                            <button type="button" class="auth-eye-btn"
+                                onclick="togglePwdVisibility('auth-login-password',this)">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                                    viewBox="0 0 24 24">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <label
+                        style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7890;cursor:pointer;user-select:none;">
+                        <input type="checkbox" id="auth-remember" style="accent-color:#1a2035;width:13px;height:13px;">
+                        记住我
+                    </label>
+                    <div
+                        style="background:#f8fafd;border:1px solid #e8edf5;border-radius:8px;padding:10px 12px;font-size:11px;color:#6b7890;line-height:1.65;">
+                        登录或注册即代表同意<a href="https://rcstudio.zeromi.cn/use/" target="_blank">《用户协议》</a>和<a
+                            href="https://rcstudio.zeromi.cn/privacy/" target="_blank">《隐私政策》</a>
+                    </div>
+                    <button type="submit" class="auth-submit-btn">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"
+                            viewBox="0 0 24 24">
+                            <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3" />
+                        </svg>
+                        登 录
+                    </button>
+                    <div style="text-align:center;font-size:12px;color:#9aa3b2;">
+                        还没有账户？
+                        <button type="button" onclick="switchAuthTab('register')"
+                            style="background:none;border:none;font-size:12px;font-weight:700;color:#1a2035;cursor:pointer;padding:0;font-family:inherit;">立即注册
+                            →</button>
+                    </div>
+                </form>
+
+                <!-- 注册表单 -->
+                <form id="auth-register-form" onsubmit="handleRegister(event)"
+                    style="display:none;flex-direction:column;gap:14px;margin-top:16px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div>
+                            <label class="cfg-label">用户名 <span style="color:#ef4444">*</span></label>
+                            <input id="auth-reg-username" class="cfg-input" type="text" placeholder="2-20 个字符"
+                                maxlength="20" autocomplete="username" spellcheck="false">
+                        </div>
+                        <div>
+                            <label class="cfg-label">邮箱 <span style="color:#ef4444">*</span></label>
+                            <input id="auth-reg-email" class="cfg-input" type="email" placeholder="your@email.com"
+                                autocomplete="email" spellcheck="false">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="cfg-label">密码 <span style="color:#ef4444">*</span>
+                            <span id="pwd-strength-label"
+                                style="float:right;font-size:10px;font-weight:700;letter-spacing:.3px;"></span>
+                        </label>
+                        <div style="position:relative;">
+                            <input id="auth-reg-password" class="cfg-input" type="password"
+                                placeholder="至少 8 位，建议大写字母 + 数字 + 符号" maxlength="64"
+                                oninput="checkPasswordStrength(this.value)" style="padding-right:40px;">
+                            <button type="button" class="auth-eye-btn"
+                                onclick="togglePwdVisibility('auth-reg-password',this)">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                                    viewBox="0 0 24 24">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="pwd-strength-track">
+                            <div id="pwd-strength-bar" class="pwd-strength-fill"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="cfg-label">确认密码 <span style="color:#ef4444">*</span></label>
+                        <div style="position:relative;">
+                            <input id="auth-reg-confirm" class="cfg-input" type="password" placeholder="再次输入密码"
+                                maxlength="64" style="padding-right:40px;">
+                            <button type="button" class="auth-eye-btn"
+                                onclick="togglePwdVisibility('auth-reg-confirm',this)">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                                    viewBox="0 0 24 24">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        style="background:#f8fafd;border:1px solid #e8edf5;border-radius:8px;padding:10px 12px;font-size:11px;color:#6b7890;line-height:1.65;">
+                        登录或注册即代表同意<a href="https://rcstudio.zeromi.cn/use/" target="_blank">《用户协议》</a>和<a
+                            href="https://rcstudio.zeromi.cn/privacy/" target="_blank">《隐私政策》</a>
+                    </div>
+                    <button type="submit" class="auth-submit-btn">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"
+                            viewBox="0 0 24 24">
+                            <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <line x1="19" y1="8" x2="19" y2="14" />
+                            <line x1="22" y1="11" x2="16" y2="11" />
+                        </svg>
+                        创建账户
+                    </button>
+                    <div style="text-align:center;font-size:12px;color:#9aa3b2;">
+                        已有账户？
+                        <button type="button" onclick="switchAuthTab('login')"
+                            style="background:none;border:none;font-size:12px;font-weight:700;color:#1a2035;cursor:pointer;padding:0;font-family:inherit;">立即登录
+                            →</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 我的上传弹窗 ===== -->
+    <div id="myUploadsModal" class="modal hidden" style="z-index:19000;">
+        <div class="modal-overlay" onclick="closeMyUploads()"></div>
+        <div class="user-modal-card">
+            <div class="user-modal-head">
+                <h2>
+                    我的上传
+                </h2>
+                <button onclick="closeMyUploads()"
+                    style="background:none;border:none;cursor:pointer;color:#9aa3b2;font-size:20px;line-height:1;padding:2px 8px;border-radius:7px;transition:background .12s;"
+                    onmouseover="this.style.background='#f4f6fb'" onmouseout="this.style.background='none'">×</button>
+            </div>
+            <div class="user-modal-body">
+                <!-- 加载中 -->
+                <div id="up-loading"
+                    style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 0;gap:12px;">
+                    <div class="mkt-spinner"></div>
+                    <div style="font-size:12px;color:#b0b8c8;">正在加载…</div>
+                </div>
+                <!-- 空状态 -->
+                <div id="up-empty"
+                    style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:48px 0;gap:10px;">
+                    <svg width="44" height="44" fill="none" stroke="#d0d5e0" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <div style="font-size:13px;font-weight:600;color:#9aa3b2;">还没有上传过模板</div>
+                    <button onclick="closeMyUploads();openUploadModal();"
+                        style="margin-top:4px;background:#1a2035;color:#fff;border:none;border-radius:9px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;">去上传第一个</button>
+                </div>
+                <!-- 错误 -->
+                <div id="up-error"
+                    style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:48px 0;gap:10px;">
+                    <div style="font-size:13px;font-weight:600;color:#9aa3b2;">加载失败</div>
+                    <div id="up-error-msg" style="font-size:12px;color:#b0b8c8;"></div>
+                    <button onclick="loadMyUploads()"
+                        style="background:#f0f3f8;border:none;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:600;color:#4a5568;cursor:pointer;">重试</button>
+                </div>
+                <!-- 列表 -->
+                <div id="up-list" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 账户设置弹窗 ===== -->
+    <div id="settingsModal" class="modal hidden" style="z-index:19000;">
+        <div class="modal-overlay" onclick="closeSettings()"></div>
+        <div class="user-modal-card" style="width:520px;">
+            <div class="user-modal-head">
+                <h2>
+                    账户设置
+                </h2>
+                <button onclick="closeSettings()"
+                    style="background:none;border:none;cursor:pointer;color:#9aa3b2;font-size:20px;line-height:1;padding:2px 8px;border-radius:7px;transition:background .12s;"
+                    onmouseover="this.style.background='#f4f6fb'" onmouseout="this.style.background='none'">×</button>
+            </div>
+            <div class="user-modal-body">
+
+                <!-- 基本信息 -->
+                <div class="settings-section">
+                    <div class="settings-section-title">基本信息</div>
+                    <div id="settings-profile-alert" class="up-alert"></div>
+                    <div class="settings-row">
+                        <div>
+                            <label class="cfg-label">用户名</label>
+                            <input id="st-username" class="cfg-input" type="text" maxlength="32" placeholder="2-32 个字符"
+                                spellcheck="false">
+                        </div>
+                        <div>
+                            <label class="cfg-label">邮箱</label>
+                            <input id="st-email" class="cfg-input" type="email" maxlength="128"
+                                placeholder="your@email.com" spellcheck="false">
+                        </div>
+                    </div>
+                    <div style="margin-top:14px;">
+                        <button onclick="saveProfile()" class="auth-submit-btn"
+                            style="width:auto;padding:9px 22px;font-size:12px;">
+                            保存基本信息
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 修改密码 -->
+                <div class="settings-section">
+                    <div class="settings-section-title">修改密码</div>
+                    <div id="settings-pwd-alert" class="up-alert"></div>
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="cfg-label">当前密码</label>
+                        <div style="position:relative;">
+                            <input id="st-old-pwd" class="cfg-input" type="password" placeholder="输入当前密码以验证身份"
+                                style="padding-right:40px;">
+                            <button type="button" class="auth-eye-btn" onclick="togglePwdVisibility('st-old-pwd',this)">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                                    viewBox="0 0 24 24">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div>
+                            <label class="cfg-label">新密码</label>
+                            <div style="position:relative;">
+                                <input id="st-new-pwd" class="cfg-input" type="password" placeholder="至少 8 位"
+                                    maxlength="64" style="padding-right:40px;"
+                                    oninput="checkPasswordStrength(this.value)">
+                                <button type="button" class="auth-eye-btn"
+                                    onclick="togglePwdVisibility('st-new-pwd',this)">
+                                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                                        viewBox="0 0 24 24">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="pwd-strength-track" style="margin-top:5px;">
+                                <div id="pwd-strength-bar" class="pwd-strength-fill"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="cfg-label">确认新密码</label>
+                            <div style="position:relative;">
+                                <input id="st-confirm-pwd" class="cfg-input" type="password" placeholder="再次输入新密码"
+                                    maxlength="64" style="padding-right:40px;">
+                                <button type="button" class="auth-eye-btn"
+                                    onclick="togglePwdVisibility('st-confirm-pwd',this)">
+                                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                                        viewBox="0 0 24 24">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:14px;">
+                        <button onclick="savePassword()" class="auth-submit-btn"
+                            style="width:auto;padding:9px 22px;font-size:12px;">
+                            更新密码
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 账户信息（只读） -->
+                <div class="settings-section" style="background:#f8fafd;">
+                    <div class="settings-section-title">账户信息</div>
+                    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                        <div style="font-size:12px;color:#6b7890;">
+                            <span style="font-weight:600;color:#1a2035;" id="st-info-username"></span>
+                            <span
+                                style="margin-left:6px;font-size:10px;background:#f0f3f8;padding:1px 7px;border-radius:10px;color:#7a8494;">用户名</span>
+                        </div>
+                        <div style="font-size:12px;color:#6b7890;">
+                            注册时间：<span id="st-info-joined" style="font-weight:600;color:#1a2035;"></span>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #edf0f7;">
+                        <button onclick="confirmDeleteAccount()"
+                            style="background:none;border:none;font-size:12px;color:#ef4444;cursor:pointer;font-family:inherit;padding:0;font-weight:600;">
+                            注销账户 →
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="updateModal" class="modal hidden" style="z-index:30000;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content"
+            style="width:520px;max-width:92%;max-height:82vh;overflow:hidden;display:flex;flex-direction:column;">
+
+            <!-- 头部 -->
+            <div class="modal-header"
+                style="background:linear-gradient(135deg,#1a2035 0%,#2a3a6a 100%);border-radius:12px 12px 0 0;padding:20px 24px;">
+                <div style="display:flex;align-items:center;gap:12px;width:100%;">
+                    <div
+                        style="width:40px;height:40px;background:rgba(255,255,255,.12);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
+                        🚀</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="color:#fff;font-size:15px;font-weight:700;">发现新版本</div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                            <span id="update-version-badge"
+                                style="background:rgba(99,179,237,.25);color:#90cdf4;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;border:1px solid rgba(99,179,237,.35);font-family:monospace;"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 更新日志正文 -->
+            <div style="flex:1;overflow-y:auto;padding:20px 24px;">
+                <div
+                    style="font-size:12px;color:#9aa3b2;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px;">
+                    更新日志</div>
+                <div id="update-changelog" style="font-size:13px;color:#2d3748;line-height:1.75;
+                        /* 子元素样式覆盖，保证后端 HTML 可读性 */"></div>
+            </div>
+
+            <!-- 底部按钮 -->
+            <div class="modal-footer"
+                style="padding:16px 24px;border-top:1px solid #f0f3f8;display:flex;gap:10px;justify-content:flex-end;">
+                <!-- 非强制更新时显示 -->
+                <button id="update-ignore-btn" onclick="dismissUpdate()" style="background:#f4f6fb;color:#6b7890;border:1.5px solid #e2e8f0;border-radius:9px;
+                           padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;
+                           transition:background .15s;font-family:inherit;"
+                    onmouseover="this.style.background='#e8ecf5'" onmouseout="this.style.background='#f4f6fb'">
+                    忽略此版本
+                </button>
+                <button onclick="confirmUpdate()" style="background:linear-gradient(135deg,#1a2035,#2a4a9a);color:#fff;border:none;border-radius:9px;
+                           padding:9px 24px;font-size:13px;font-weight:600;cursor:pointer;
+                           transition:opacity .15s;font-family:inherit;" onmouseover="this.style.opacity='.85'"
+                    onmouseout="this.style.opacity='1'">
+                    前往更新
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 公告模态弹窗 ===== -->
+    <div id="announceModal" class="modal hidden" style="z-index:29000;">
+        <div class="modal-overlay" onclick="closeAnnounce()"></div>
+        <div class="modal-content"
+            style="width:500px;max-width:92%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+
+            <!-- 头部 -->
+            <div class="modal-header"
+                style="background:linear-gradient(135deg,#0e3a2a 0%,#1a6b4a 100%);border-radius:12px 12px 0 0;padding:18px 24px;">
+                <div style="display:flex;align-items:center;gap:12px;width:100%;">
+                    <div
+                        style="width:38px;height:38px;background:rgba(255,255,255,.12);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;">
+                        📢</div>
+                    <div style="color:#fff;font-size:15px;font-weight:700;flex:1;">系统公告</div>
+                    <button onclick="closeAnnounce()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;
+                               border-radius:7px;cursor:pointer;font-size:15px;display:flex;align-items:center;
+                               justify-content:center;transition:background .15s;"
+                        onmouseover="this.style.background='rgba(255,255,255,.22)'"
+                        onmouseout="this.style.background='rgba(255,255,255,.12)'">×</button>
+                </div>
+            </div>
+
+            <!-- 公告正文 -->
+            <div style="flex:1;overflow-y:auto;padding:20px 24px;">
+                <div id="announce-body" style="font-size:13px;color:#2d3748;line-height:1.8;"></div>
+            </div>
+
+            <!-- 底部按钮 -->
+            <div class="modal-footer"
+                style="padding:14px 24px;border-top:1px solid #f0f3f8;display:flex;gap:10px;justify-content:flex-end;align-items:center;">
+                <span style="flex:1;font-size:11px;color:#b0b8c8;">下次更新前关闭后将重新出现</span>
+                <button onclick="dismissAnnounce()" style="background:#f4f6fb;color:#6b7890;border:1.5px solid #e2e8f0;border-radius:9px;
+                           padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;
+                           transition:background .15s;font-family:inherit;"
+                    onmouseover="this.style.background='#e8ecf5'" onmouseout="this.style.background='#f4f6fb'">
+                    下次更新前不再显示
+                </button>
+                <button onclick="closeAnnounce()" style="background:#1a6b4a;color:#fff;border:none;border-radius:9px;
+                           padding:8px 20px;font-size:12px;font-weight:600;cursor:pointer;
+                           transition:opacity .15s;font-family:inherit;" onmouseover="this.style.opacity='.85'"
+                    onmouseout="this.style.opacity='1'">
+                    我知道了
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 按依赖顺序加载各模块 -->
+    <script src="js/constants.js"></script>
+    <script src="js/online-mode.js"></script>
+    <script src="js/node-defs.js"></script>
+    <script src="js/codegen.js"></script>
+    <script src="js/form.js"></script>
+    <script src="js/config-ui.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/blueprint.js"></script>
+    <script src="js/compile.js"></script>
+    <script src="js/graph.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/user-panel.js"></script>
+    <script src="js/market.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/announce.js"></script>
+    <script src="js/main.js"></script>
+
+</body>
+
+</html>

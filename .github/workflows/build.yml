@@ -1,0 +1,285 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  build-windows-amd64:
+    name: Build for Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install go-winres
+        run: go install github.com/tc-hib/go-winres@latest
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go-winres
+        run: go-winres make
+
+      - name: Build
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          if [ "$VERSION" = "$GITHUB_REF" ]; then
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          BUILDTIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-s -w -H windowsgui -X main.Version=${VERSION} -X main.BuildTime=${BUILDTIME}"
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o rcstudio.exe .
+
+      - name: Package
+        shell: pwsh
+        run: |
+          7z a -tzip "RCStudio-windows-amd64-${{ env.VERSION }}.zip" rcstudio.exe resources\index.html resources\js
+          7z a -tzip "RCStudio-windows-amd64-full-${{ env.VERSION }}.zip" rcstudio.exe resources
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcstudio-windows-amd64
+          path: RCStudio-windows-amd64-*.zip
+          retention-days: 30
+
+  build-crossplatform:
+    name: Build for ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: Windows ARM64
+            goos: windows
+            goarch: arm64
+            binary: rcstudio-arm64.exe
+            artifact: rcstudio-windows-arm64
+            prefix: RCStudio-windows-arm64
+          - name: Linux x64
+            goos: linux
+            goarch: amd64
+            binary: rcstudio-linux
+            artifact: rcstudio-linux-amd64
+            prefix: RCStudio-linux-amd64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install go-winres (Windows ARM64 only)
+        if: matrix.goos == 'windows'
+        run: go install github.com/tc-hib/go-winres@latest
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go-winres (Windows ARM64 only)
+        if: matrix.goos == 'windows'
+        run: go-winres make
+
+      - name: Build
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          if [ "$VERSION" = "$GITHUB_REF" ]; then
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          BUILDTIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILDTIME}"
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -ldflags "${LDFLAGS}" -o ${{ matrix.binary }} .
+
+      - name: Package
+        run: |
+          VERSION="${{ env.VERSION }}"
+          if [ "${{ matrix.goos }}" = "linux" ]; then
+            chmod +x ${{ matrix.binary }}
+          fi
+          zip -r "${{ matrix.prefix }}-${VERSION}.zip" ${{ matrix.binary }} resources/index.html resources/js
+          zip -r "${{ matrix.prefix }}-full-${VERSION}.zip" ${{ matrix.binary }} resources
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.prefix }}-*.zip
+          retention-days: 30
+
+  build-macos:
+    name: Build for ${{ matrix.name }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - name: macOS x64
+            goarch: amd64
+            binary: rcstudio
+            artifact: rcstudio-macos-amd64
+            prefix: RCStudio-macos-amd64
+          - name: macOS ARM64 (Apple Silicon)
+            goarch: arm64
+            binary: rcstudio
+            artifact: rcstudio-macos-arm64
+            prefix: RCStudio-macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          if [ "$VERSION" = "$GITHUB_REF" ]; then
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          BUILDTIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILDTIME}"
+          CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.goarch }} go build -ldflags "${LDFLAGS}" -o ${{ matrix.binary }} .
+
+      - name: Package as .app bundle
+        run: |
+          VERSION="${{ env.VERSION }}"
+          APP_NAME="RCStudio"
+          APP_DIR="${APP_NAME}.app/Contents"
+          mkdir -p "${APP_DIR}/MacOS"
+          mkdir -p "${APP_DIR}/Resources"
+
+          # Copy binary
+          cp ${{ matrix.binary }} "${APP_DIR}/MacOS/${APP_NAME}"
+          chmod +x "${APP_DIR}/MacOS/${APP_NAME}"
+
+          # Write Info.plist
+          cat > "${APP_DIR}/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>RCStudio</string>
+            <key>CFBundleDisplayName</key>
+            <string>RedstoneCode Studio</string>
+            <key>CFBundleIdentifier</key>
+            <string>cn.zeromi.rcstudio</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundleExecutable</key>
+            <string>${APP_NAME}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>LSMinimumSystemVersion</key>
+            <string>10.13</string>
+          </dict>
+          </plist>
+          EOF
+
+          # Package: slim (app + web assets) and full (app + all resources)
+          zip -r "${{ matrix.prefix }}-${VERSION}.zip" "${APP_NAME}.app" resources/index.html resources/js
+          zip -r "${{ matrix.prefix }}-full-${VERSION}.zip" "${APP_NAME}.app" resources
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.prefix }}-*.zip
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [build-windows-amd64, build-crossplatform, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version and changelog
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [ -f "RELEASE_NOTES.md" ]; then
+            cp RELEASE_NOTES.md release_body_content.txt
+          else
+            PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)
+            git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s (%h)" --no-merges > release_body_content.txt || echo "- 首次发布" > release_body_content.txt
+          fi
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ steps.changelog.outputs.version }}"
+          REPO="${{ github.repository }}"
+          cat > final_release_notes.txt << 'EOF'
+          ## RedstoneCode Studio VERSION_PLACEHOLDER
+
+          ### 下载说明
+
+          | 文件 | 说明 |
+          |------|------|
+          | RCStudio-windows-amd64-VERSION_PLACEHOLDER.zip | Windows x64 精简版 |
+          | RCStudio-windows-amd64-full-VERSION_PLACEHOLDER.zip | Windows x64 完整版（小白选这个） |
+          | RCStudio-windows-arm64-VERSION_PLACEHOLDER.zip | Windows ARM64 精简版 |
+          | RCStudio-windows-arm64-full-VERSION_PLACEHOLDER.zip | Windows ARM64 完整版 |
+          | RCStudio-linux-amd64-VERSION_PLACEHOLDER.zip | Linux x64 精简版 |
+          | RCStudio-linux-amd64-full-VERSION_PLACEHOLDER.zip | Linux x64 完整版 |
+          | RCStudio-macos-amd64-VERSION_PLACEHOLDER.zip | macOS Intel 精简版 |
+          | RCStudio-macos-amd64-full-VERSION_PLACEHOLDER.zip | macOS Intel 完整版 |
+          | RCStudio-macos-arm64-VERSION_PLACEHOLDER.zip | macOS Apple Silicon 精简版 |
+          | RCStudio-macos-arm64-full-VERSION_PLACEHOLDER.zip | macOS Apple Silicon 完整版（小白选这个） |
+
+          ### 更新内容
+          EOF
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" final_release_notes.txt
+          cat release_body_content.txt >> final_release_notes.txt
+          printf "\n---\n**提示**: 如果遇到问题，请提交 [Issue](https://github.com/%s/issues)\n" "${REPO}" >> final_release_notes.txt
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: RedstoneCode Studio ${{ steps.changelog.outputs.version }}
+          body_path: final_release_notes.txt
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          files: artifacts/*.zip
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
