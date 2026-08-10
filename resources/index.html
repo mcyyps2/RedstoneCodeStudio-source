@@ -1136,7 +1136,7 @@
                 </svg>
                 <span class="font-bold text-gray-900 text-base tracking-tight">RC Studio</span>
                 <span
-                    class="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">1.3.0</span>
+                    class="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">1.3.2</span>
             </div>
             <nav class="tab-group">
                 <button onclick="switchTab('logic')" id="tab-logic" class="tab-btn active">逻辑设计</button>
@@ -1590,6 +1590,7 @@
                                 <div>
                                     <label class="cfg-label">请选择游戏版本</label>
                                     <select id="apiVersion" onchange="syncAllFiles()" class="cfg-input">
+                                        <option value="26.2">26.2</option>
                                         <option value="1.21" selected>1.21</option>
                                         <option value="1.20">1.20</option>
                                         <option value="1.19">1.19</option>
@@ -1660,12 +1661,26 @@
                                 <div>
                                     <label class="cfg-label">Spigot 依赖版本</label>
                                     <select id="spigotVersion" onchange="syncAllFiles()" class="cfg-input">
+                                        <option value="26.2-R0.1-SNAPSHOT">26.2</option>
                                         <option value="1.21.4-R0.1-SNAPSHOT" selected>1.21.4</option>
                                         <option value="1.21-R0.1-SNAPSHOT">1.21</option>
                                         <option value="1.20.4-R0.1-SNAPSHOT">1.20.4</option>
                                         <option value="1.19.4-R0.1-SNAPSHOT">1.19.4</option>
                                         <option value="1.16.5-R0.1-SNAPSHOT">1.16.5</option>
                                     </select>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div class="cfg-card">
+                            <div class="cfg-card-title text-emerald-600">Java 环境（用于 Maven 编译）</div>
+                            <div class="space-y-3">
+                                <div id="javaHomesList" class="space-y-2"></div>
+                                <div class="flex gap-2 items-center">
+                                    <button type="button" onclick="addJavaHome()"
+                                        class="text-xs bg-emerald-600 text-white rounded px-3 py-1 hover:bg-emerald-700 font-semibold">＋ 添加 Java</button>
+                                    <span id="javaHomeStatus" class="text-xs text-gray-400"></span>
                                 </div>
                             </div>
                         </div>

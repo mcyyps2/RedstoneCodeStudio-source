@@ -12,6 +12,138 @@ function removeConfigEntry(idx) {
     regenerateAll();
 }
 
+// 从后端加载已记录的 Java 环境列表并渲染到「Java 环境」区块
+async function loadJavaHomes() {
+    try {
+        const resp = await fetch('/api/java-homes');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderJavaHomes(data.javaHomes || []);
+    } catch (e) {
+        console.warn('加载 Java 环境失败', e);
+    }
+}
+
+// 渲染 Java 环境列表，并同步 Java 版本下拉框（加入已检测的版本）
+function renderJavaHomes(homes) {
+    const list = document.getElementById('javaHomesList');
+    const status = document.getElementById('javaHomeStatus');
+    if (!list) return;
+
+    list.innerHTML = '';
+    if (!homes || homes.length === 0) {
+        list.innerHTML = '<div class="text-xs text-gray-400">尚未添加 Java 环境。</div>';
+        if (status) status.textContent = '';
+        return;
+    }
+
+    // 同步 Java 版本下拉框：加入已添加的版本（去重，不覆盖用户已选）
+    const sel = document.getElementById('javaVersion');
+    const currentVal = sel ? sel.value : '';
+    const existing = sel ? new Set([...sel.options].map(o => o.value)) : new Set();
+    if (sel) {
+        const sorted = [...homes].sort((a, b) => a.version - b.version);
+        for (const h of sorted) {
+            const v = String(h.version);
+            if (!existing.has(v)) {
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = 'Java ' + v;
+                sel.appendChild(opt);
+                existing.add(v);
+            }
+        }
+        if (sel.value && ![...sel.options].some(o => o.value === currentVal)) {
+            // 用户之前选择的值仍保留
+        } else {
+            sel.value = currentVal;
+        }
+    }
+
+    // 渲染每条 Java 记录
+    const sortedHomes = [...homes].sort((a, b) => a.version - b.version);
+    sortedHomes.forEach(h => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2 py-1.5';
+
+        const badge = document.createElement('span');
+        badge.className = 'text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5';
+        badge.textContent = 'Java ' + h.version;
+        row.appendChild(badge);
+
+        const path = document.createElement('span');
+        path.className = 'text-xs text-gray-600 flex-1 truncate';
+        path.textContent = h.path;
+        path.title = h.path;
+        row.appendChild(path);
+
+        const del = document.createElement('button');
+        del.className = 'text-xs text-red-500 hover:text-red-700 font-bold px-2';
+        del.textContent = '删除';
+        del.onclick = () => removeJavaHome(h.path);
+        row.appendChild(del);
+
+        list.appendChild(row);
+    });
+    if (status) status.textContent = '共 ' + homes.length + ' 个 Java 环境';
+}
+
+// 点击「添加 Java」：后端弹出系统文件夹选择框 → 选择 JDK 目录 → 添加并刷新
+async function addJavaHome() {
+    const status = document.getElementById('javaHomeStatus');
+    if (status) status.textContent = '请在弹出的窗口中选择 JDK 目录…';
+
+    try {
+        // 1. 打开系统目录选择框
+        const pickResp = await fetch('/api/pick-java-dir', { method: 'POST' });
+        if (!pickResp.ok) throw new Error('无法打开目录选择框');
+        const picked = await pickResp.json();
+        if (picked.cancelled || !picked.path) {
+            if (status) status.textContent = '';
+            return; // 用户取消
+        }
+        // 2. 添加选中的路径
+        const addResp = await fetch('/api/add-java', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: picked.path })
+        });
+        const data = await addResp.json();
+        if (data.error) {
+            if (status) status.textContent = data.error;
+            return;
+        }
+        renderJavaHomes(data.javaHomes || []);
+        if (status) status.textContent = '已添加';
+    } catch (err) {
+        if (status) status.textContent = '添加失败：' + err.message;
+    }
+}
+
+// 删除一个已记录的 Java 环境
+async function removeJavaHome(path) {
+    const status = document.getElementById('javaHomeStatus');
+    try {
+        const resp = await fetch('/api/remove-java', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        const data = await resp.json();
+        renderJavaHomes(data.javaHomes || []);
+        if (status) status.textContent = '已删除';
+    } catch (err) {
+        if (status) status.textContent = '删除失败：' + err.message;
+    }
+}
+
+// 页面加载后，加载已记录的 Java 环境
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof loadJavaHomes === 'function') {
+        loadJavaHomes();
+    }
+});
+
 // 将 configEntries 渲染为可编辑的表单行
 function renderConfigEntries() {
     const container = document.getElementById('config-entries');

@@ -3,6 +3,7 @@ module go-ocr
 go 1.25.0
 
 require (
+	github.com/TheTitanrain/w32 v0.0.0-20180517000239-4f5cfb03fabf // indirect
 	github.com/apache/arrow/go/arrow v0.0.0-20211112161151-bc219186db40 // indirect
 	github.com/awalterschulze/gographviz v2.0.3+incompatible // indirect
 	github.com/chewxy/hm v1.0.0 // indirect
@@ -13,6 +14,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/leesper/go_rng v0.0.0-20190531154944-a612b043e353 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac // indirect
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6 // indirect
 	github.com/xtgo/set v1.0.0 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect

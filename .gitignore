@@ -56,3 +56,6 @@ AGENTS.md
 
 # 本地持久化设置（含登录会话凭据）
 settings.json
+
+# 本机 Java 环境记录（个人环境数据，不上传）
+java-homes.json

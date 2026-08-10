@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
+
+	"github.com/sqweek/dialog"
 )
 
 var (
@@ -32,6 +34,24 @@ var (
 	ProgramDir   string
 	MavenCommand string
 )
+
+// JavaHomesFile 记录扫描到的 JDK 路径列表（程序根目录，避免打入资源包）
+var JavaHomesFile string
+
+// JavaHomeInfo 描述一个可用的 JDK
+type JavaHomeInfo struct {
+	Path    string `json:"path"`
+	Version int    `json:"version"`
+}
+
+// JavaHomesData 记录文件的 JSON 结构
+type JavaHomesData struct {
+	ScannedAt string         `json:"scannedAt"`
+	JavaHomes []JavaHomeInfo `json:"javaHomes"`
+}
+
+// javaHomesCache 内存缓存（避免频繁读文件）
+var javaHomesCache []JavaHomeInfo
 
 var TempBuildDir string
 
@@ -178,6 +198,10 @@ func init() {
 
 	TempBuildDir = filepath.Join(ProgramDir, "builds")
 	SettingsFile = filepath.Join(ProgramDir, "settings.json")
+	JavaHomesFile = filepath.Join(ProgramDir, "java-homes.json")
+
+	// 启动时确保 Java 记录可用（读取记录→验证→失效则重新扫描→保存）
+	ensureJavaHomes()
 }
 
 func getMavenCommand() string {
@@ -204,6 +228,433 @@ func getMavenCommand() string {
 
 	log.Println("内置 Maven 不存在，将使用系统 PATH 中的 mvn")
 	return "mvn"
+}
+
+// 常见 JDK 安装位置候选（Windows 优先，可自行扩展）
+var javaCandidates = []string{
+	`F:\zulu26`,
+	`C:\Program Files\Java\latest`,
+	`C:\Program Files\Eclipse Adoptium`,
+	`C:\Program Files\Microsoft`,
+	`C:\Program Files\Zulu`,
+	`C:\Program Files\Amazon Corretto`,
+	`F:\zulu17`,
+}
+
+// 启动时确保 Java 记录可用：读取记录 → 验证每个路径是否存在 →
+// 有失效或记录为空则重新扫描并保存；否则直接用缓存。
+func ensureJavaHomes() {
+	if err := loadJavaHomes(); err == nil && len(javaHomesCache) > 0 {
+		// 验证记录是否仍然有效
+		valid := false
+		for _, jh := range javaHomesCache {
+			if isJavaHomeValid(jh.Path) {
+				valid = true
+				break
+			}
+		}
+		if valid {
+			log.Printf("使用已记录的 Java 环境 (%d 个)", len(javaHomesCache))
+			return
+		}
+	}
+	// 记录为空或全部失效 → 快速扫描常见位置兜底（不做全盘扫描，避免启动卡顿）
+	list := scanJavaHomes()
+	if len(list) > 0 {
+		javaHomesCache = list
+		saveJavaHomes()
+		log.Printf("快速扫描到 %d 个 Java 环境并已记录", len(list))
+	} else {
+		javaHomesCache = nil
+		log.Printf("未找到 Java 环境，可通过配置页手动添加")
+	}
+}
+
+// 快速扫描系统常见位置的 JDK，返回按版本升序的列表
+func scanJavaHomes() []JavaHomeInfo {
+	var roots []string
+	for _, c := range javaCandidates {
+		if st, err := os.Stat(c); err == nil && st.IsDir() {
+			subs, _ := os.ReadDir(c)
+			if strings.Contains(strings.ToLower(c), "jdk") {
+				roots = append(roots, c)
+			}
+			for _, s := range subs {
+				if s.IsDir() && strings.Contains(strings.ToLower(s.Name()), "jdk") {
+					roots = append(roots, filepath.Join(c, s.Name()))
+				}
+			}
+		}
+	}
+	// 补充系统 PATH 中的 java
+	if p := javaFromPath(); p != "" {
+		roots = append(roots, p)
+	}
+
+	var result []JavaHomeInfo
+	seen := map[string]bool{}
+	for _, root := range roots {
+		javac := filepath.Join(root, "bin", "javac.exe")
+		if _, err := os.Stat(javac); err != nil {
+			javac = filepath.Join(root, "bin", "javac")
+			if _, err := os.Stat(javac); err != nil {
+				continue
+			}
+		}
+		abs, _ := filepath.Abs(root)
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		ver := detectJavaVersion(javac)
+		if ver > 0 {
+			result = append(result, JavaHomeInfo{Path: abs, Version: ver})
+		}
+	}
+	// 按版本升序排序（冒泡，条目少足够）
+	for i := 0; i < len(result); i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].Version < result[i].Version {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	return result
+}
+
+// 全盘扫描：遍历所有磁盘分区查找 JDK。
+// 限制扫描深度、跳过系统/缓存目录，避免扫描过慢。
+func scanJavaHomesFull() []JavaHomeInfo {
+	var roots []string
+
+	// Windows: 枚举逻辑驱动器
+	if runtime.GOOS == "windows" {
+		for d := 'A'; d <= 'Z'; d++ {
+			root := string(d) + ":\\"
+			if st, err := os.Stat(root); err == nil && st.IsDir() {
+				roots = append(roots, root)
+			}
+		}
+	} else {
+		// 非 Windows：扫描常见挂载点
+		for _, p := range []string{"/usr", "/opt", "/home", "/Library/Java"} {
+			if st, err := os.Stat(p); err == nil && st.IsDir() {
+				roots = append(roots, p)
+			}
+		}
+	}
+
+	// 跳过这些目录（大小写不敏感），避免进入系统/缓存目录
+	skipDirs := map[string]bool{
+		"windows": true, "programdata": true, "$recycle.bin": true,
+		"system volume information": true, "recovery": true, "$sysreset": true,
+		"perflogs": true, "documents and settings": true,
+		".git": true, "node_modules": true, "appdata": true,
+		"tmp": true, "temp": true, "caches": true,
+	}
+
+	var result []JavaHomeInfo
+	seen := map[string]bool{}
+	maxDepth := 6
+
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		if depth > maxDepth {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := strings.ToLower(e.Name())
+			if skipDirs[name] {
+				continue
+			}
+			sub := filepath.Join(dir, e.Name())
+			// 如果该目录下存在 bin/javac，则是一个 JDK
+			javac := filepath.Join(sub, "bin", "javac.exe")
+			if _, err := os.Stat(javac); err != nil {
+				javac = filepath.Join(sub, "bin", "javac")
+				if _, err := os.Stat(javac); err == nil {
+					abs, _ := filepath.Abs(sub)
+					if !seen[abs] {
+						seen[abs] = true
+						if ver := detectJavaVersion(javac); ver > 0 {
+							result = append(result, JavaHomeInfo{Path: abs, Version: ver})
+						}
+					}
+				}
+			}
+			// 继续深入子目录（除非名字已经像 JDK 目录，通常无需再深入）
+			if !strings.Contains(name, "jdk") {
+				walk(sub, depth+1)
+			}
+		}
+	}
+
+	for _, root := range roots {
+		walk(root, 1)
+	}
+
+	// 按版本升序排序
+	for i := 0; i < len(result); i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].Version < result[i].Version {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	return result
+}
+
+// 从系统 PATH 解析 java 所在的 JDK 根目录（尽力而为）
+func javaFromPath() string {
+	javaExe, err := exec.LookPath("java")
+	if err != nil {
+		return ""
+	}
+	// 解析到 bin 的上一级作为 JDK 根
+	binDir := filepath.Dir(javaExe)
+	if strings.EqualFold(filepath.Base(binDir), "bin") {
+		return filepath.Dir(binDir)
+	}
+	return ""
+}
+
+// 判断某个路径是否仍是有效的 JDK（bin/javac 存在）
+func isJavaHomeValid(path string) bool {
+	javac := filepath.Join(path, "bin", "javac.exe")
+	if _, err := os.Stat(javac); err != nil {
+		javac = filepath.Join(path, "bin", "javac")
+		if _, err := os.Stat(javac); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// 从记录文件加载 JavaHomes 到内存缓存
+func loadJavaHomes() error {
+	data, err := os.ReadFile(JavaHomesFile)
+	if err != nil {
+		return err
+	}
+	var d JavaHomesData
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+	javaHomesCache = d.JavaHomes
+	return nil
+}
+
+// 将当前缓存保存到记录文件
+func saveJavaHomes() {
+	d := JavaHomesData{
+		ScannedAt: time.Now().Format(time.RFC3339),
+		JavaHomes: javaHomesCache,
+	}
+	data, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(JavaHomesFile, data, 0644)
+}
+
+// 根据所需 Java 版本解析可用的 JDK 路径（用于 Maven 编译）。
+// 优先使用记录的路径；找不到满足版本则回退到系统 JAVA_HOME。
+func resolveJavaHome(javaVer string) string {
+	need := 8
+	if n, err := strconv.Atoi(strings.TrimSpace(javaVer)); err == nil && n > 0 {
+		need = n
+	}
+
+	// 优先使用记录的有效路径，选择满足 need 的最小可用版本
+	best := ""
+	bestVer := 0
+	for _, jh := range javaHomesCache {
+		if !isJavaHomeValid(jh.Path) {
+			continue
+		}
+		if jh.Version >= need && (best == "" || jh.Version < bestVer || bestVer < need) {
+			best = jh.Path
+			bestVer = jh.Version
+		}
+	}
+	if best != "" {
+		return best
+	}
+	// 回退到系统 JAVA_HOME
+	if jh := os.Getenv("JAVA_HOME"); jh != "" {
+		return jh
+	}
+	return ""
+}
+
+// 运行 javac -version 解析主版本号；失败返回 0
+func detectJavaVersion(javac string) int {
+	out, err := exec.Command(javac, "-version").CombinedOutput()
+	if err != nil {
+		return 0
+	}
+	// javac 输出形如: javac 26.0.2 或 javac 21.0.1 或 javac 1.8.0_xxx
+	txt := string(out)
+	for _, f := range strings.Fields(txt) {
+		// 取每个字段小数点前的主版本号（如 "21.0.1" → 21）
+		head := f
+		if i := strings.IndexAny(f, "._"); i >= 0 {
+			head = f[:i]
+		}
+		if n, err := strconv.Atoi(head); err == nil {
+			// 旧格式 1.8.0_xxx → 主版本 8
+			if n == 1 {
+				if i := strings.Index(f, "."); i >= 0 && i+1 < len(f) {
+					if m, err := strconv.Atoi(string(f[i+1])); err == nil {
+						return m
+					}
+				}
+				return n
+			}
+			return n
+		}
+	}
+	return 0
+}
+
+// POST /api/scan-java：手动触发扫描并保存，返回最新列表
+func scanJavaHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	list := scanJavaHomes()
+	javaHomesCache = list
+	saveJavaHomes()
+	json.NewEncoder(w).Encode(JavaHomesData{
+		ScannedAt: time.Now().Format(time.RFC3339),
+		JavaHomes: list,
+	})
+}
+
+// GET /api/java-homes：返回当前记录的 JDK 列表
+func javaHomesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(JavaHomesData{
+		ScannedAt: time.Now().Format(time.RFC3339),
+		JavaHomes: javaHomesCache,
+	})
+}
+
+// POST /api/pick-java-dir：弹出系统文件夹选择框，返回用户选中的目录路径
+func pickJavaDirHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	dir, err := dialog.Directory().Title("请选择 JDK 目录（包含 bin/javac）").Browse()
+	if err != nil {
+		// 用户取消选择
+		json.NewEncoder(w).Encode(map[string]interface{}{"cancelled": true, "path": ""})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"cancelled": false, "path": dir})
+}
+
+// POST /api/add-java：将指定路径加入 Java 记录（自动检测版本），返回最新列表
+func addJavaHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+	p := strings.TrimSpace(req.Path)
+	if p == "" {
+		http.Error(w, `{"error":"path empty"}`, http.StatusBadRequest)
+		return
+	}
+	// 验证是否为有效 JDK 并检测版本
+	javac := filepath.Join(p, "bin", "javac.exe")
+	if _, err := os.Stat(javac); err != nil {
+		javac = filepath.Join(p, "bin", "javac")
+		if _, err := os.Stat(javac); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "该目录下未找到 bin/javac，不是有效的 JDK"})
+			return
+		}
+	}
+	ver := detectJavaVersion(javac)
+	if ver <= 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "无法识别该 JDK 的版本"})
+		return
+	}
+	abs, _ := filepath.Abs(p)
+	// 去重
+	for _, jh := range javaHomesCache {
+		if strings.EqualFold(jh.Path, abs) {
+			// 已存在，更新版本
+			javaHomesCache = []JavaHomeInfo{}
+			break
+		}
+	}
+	javaHomesCache = append(javaHomesCache, JavaHomeInfo{Path: abs, Version: ver})
+	// 按版本排序
+	sortJavaHomes()
+	saveJavaHomes()
+	json.NewEncoder(w).Encode(JavaHomesData{
+		ScannedAt: time.Now().Format(time.RFC3339),
+		JavaHomes: javaHomesCache,
+	})
+}
+
+// POST /api/remove-java：从记录中移除指定路径的 Java，返回最新列表
+func removeJavaHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+	target, _ := filepath.Abs(strings.TrimSpace(req.Path))
+	var filtered []JavaHomeInfo
+	for _, jh := range javaHomesCache {
+		if !strings.EqualFold(jh.Path, target) {
+			filtered = append(filtered, jh)
+		}
+	}
+	javaHomesCache = filtered
+	saveJavaHomes()
+	json.NewEncoder(w).Encode(JavaHomesData{
+		ScannedAt: time.Now().Format(time.RFC3339),
+		JavaHomes: javaHomesCache,
+	})
+}
+
+// 按版本升序对 Java 记录排序
+func sortJavaHomes() {
+	for i := 0; i < len(javaHomesCache); i++ {
+		for j := i + 1; j < len(javaHomesCache); j++ {
+			if javaHomesCache[j].Version < javaHomesCache[i].Version {
+				javaHomesCache[i], javaHomesCache[j] = javaHomesCache[j], javaHomesCache[i]
+			}
+		}
+	}
 }
 
 func decodeGBK(s []byte) string {
@@ -279,6 +730,11 @@ func main() {
 	http.HandleFunc("/api/config", configHandler)
 	http.HandleFunc("/api/settings", settingsHandler)
 	http.HandleFunc("/api/session", sessionHandler)
+	http.HandleFunc("/api/scan-java", scanJavaHandler)
+	http.HandleFunc("/api/java-homes", javaHomesHandler)
+	http.HandleFunc("/api/pick-java-dir", pickJavaDirHandler)
+	http.HandleFunc("/api/add-java", addJavaHandler)
+	http.HandleFunc("/api/remove-java", removeJavaHandler)
 	http.HandleFunc("/api/proxy/auth", proxyAuthHandler)
 	http.HandleFunc("/api/update", remotePassthroughHandler("/api/update.php"))
 	http.HandleFunc("/api/announce", remotePassthroughHandler("/api/announce.php"))
@@ -587,7 +1043,12 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 		cmd = exec.CommandContext(buildCtx, mavenCmd, "clean", "package", "-DskipTests", "-q")
 	}
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), "MAVEN_HOME="+mavenHome)
+	// 根据所需 Java 版本解析合适的 JDK 并设置 JAVA_HOME（支持 Java 25 等新版本）
+	envList := os.Environ()
+	if jh := resolveJavaHome(req.JavaVersion); jh != "" {
+		envList = append(envList, "JAVA_HOME="+jh, "PATH="+jh+string(os.PathListSeparator)+filepath.Join(jh, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+	cmd.Env = append(envList, "MAVEN_HOME="+mavenHome)
 
 	// Windows 下 cmd /c 会派生子进程，需连同整个进程树一起结束
 	if runtime.GOOS == "windows" {
