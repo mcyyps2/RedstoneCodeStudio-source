@@ -1234,13 +1234,26 @@ function generatePomXml() {
     const javaVer = document.getElementById('javaVersion')?.value || '17';
     const spigotVer = document.getElementById('spigotVersion')?.value || '1.20.4-R0.1-SNAPSHOT';
     const foliaMode = document.getElementById('foliaMode')?.checked || false;
+    const apiVerForPom = document.getElementById('apiVersion')?.value || '1.21';
     const { cls } = getMainClassParts();
     const pluginName = document.getElementById('pluginName')?.value || 'MagicPlugin';
 
-    // Folia 模式使用 Paper API（支持 Folia 调度器）；否则使用 Spigot API
+    // Folia 模式使用 Paper API（支持 Folia 调度器）；否则使用 Spigot API。
+    // Paper API 版本号格式与 Spigot 不同，用版本范围语法自动选择可用构建。
+    function paperVersionRange(av) {
+        const m = String(av).match(/^(\d+)\.(\d+)/);
+        if (!m) return '[' + av + ',)';
+        if (m[1] === '1') {
+            // 旧命名 1.x：范围 [1.x, 1.(x+1))，如 [1.21,1.22)
+            return '[' + av + ',1.' + (Number(m[2]) + 1) + ')';
+        }
+        // 新命名年份版本 26.2：范围 [26.2,26.3)
+        return '[' + m[1] + '.' + m[2] + ',' + m[1] + '.' + (Number(m[2]) + 1) + ')';
+    }
     let reposBlock = '';
     let depsBlock = '';
     if (foliaMode) {
+        const paperRange = paperVersionRange(apiVerForPom);
         reposBlock = `        <!-- Paper API 仓库（Folia 兼容） -->
         <repository>
             <id>papermc-repo</id>
@@ -1250,7 +1263,7 @@ function generatePomXml() {
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>${spigotVer}</version>
+            <version>${paperRange}</version>
             <scope>provided</scope>
         </dependency>`;
     } else {
