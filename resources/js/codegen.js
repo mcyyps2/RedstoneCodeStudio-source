@@ -1239,38 +1239,54 @@ function generatePomXml() {
     const pluginName = document.getElementById('pluginName')?.value || 'MagicPlugin';
 
     // Folia 模式使用 Paper API（支持 Folia 调度器）；否则使用 Spigot API。
-    // Paper API 版本号格式（如 26.2.build.111-stable）与 Spigot 不同，
-    // 用版本范围语法让 Maven 自动解析到可用的 Paper API 构建。
-    function paperVersionRange(av) {
-        const m = String(av).match(/^(\d+)\.(\d+)/);
-        if (!m) return '[' + av + ',)';
-        if (m[1] === '1') {
-            // 旧命名 1.x：范围 [1.x, 1.(x+1))，如 [1.21,1.22)
-            return '[' + av + ',1.' + (Number(m[2]) + 1) + ')';
+    // Paper API 版本号格式（如 26.2.build.112-stable）与 Spigot 不同。
+    // 注意：不要用版本范围语法（如 [1.20.5,1.21)）让 Maven 自行解析，
+    // 那会命中已失效的 SNAPSHOT（如 1.20.5-R0.1-SNAPSHOT），其传递依赖
+    // adventure-bom:4.17.0-SNAPSHOT 已从仓库删除，导致编译失败。
+    // 因此这里直接锁定 Paper 官方仓库中确定存在的稳定构建版本。
+    //
+    // 表单填写的 apiVersion 是 Minecraft 版本（如 1.20.5），这里建立到
+    // Paper API stable 构建的映射。映射不到的版本回退到默认 stable 构建。
+    function paperStableVersion(av) {
+        const PAPER_DEFAULT_STABLE = '26.2.build.112-stable'; // 仓库中确认存在的最新稳定版
+        const map = {
+            '1.20': '1.20.1-R0.1-SNAPSHOT',
+            '1.20.1': '1.20.1-R0.1-SNAPSHOT',
+            '1.20.4': '1.20.4-R0.1-SNAPSHOT',
+            '1.20.6': '1.20.6-R0.1-SNAPSHOT',
+            '1.21': '1.21.4-R0.1-SNAPSHOT',
+            '1.21.1': '1.21.4-R0.1-SNAPSHOT',
+            '1.21.4': '1.21.4-R0.1-SNAPSHOT',
+            '1.21.5': '1.21.5-R0.1-SNAPSHOT',
+            '1.21.8': '1.21.8-R0.1-SNAPSHOT',
+            '1.21.9': '1.21.9-R0.1-SNAPSHOT',
+            '1.21.10': '1.21.10-R0.1-SNAPSHOT',
+            '1.21.11': '1.21.11-R0.1-SNAPSHOT'
+        };
+        const key = String(av).trim();
+        if (map[key]) return map[key];
+        // 识别年份命名（如 26.2）直接使用对应 stable 构建
+        const ym = String(av).match(/^(\d+)\.(\d+)$/);
+        if (ym && Number(ym[1]) >= 2) {
+            // 年份命名对应最新 stable，直接使用默认稳定版
+            return PAPER_DEFAULT_STABLE;
         }
-        // 新命名年份版本 26.2：范围 [26.2,26.3)
-        return '[' + m[1] + '.' + m[2] + ',' + m[1] + '.' + (Number(m[2]) + 1) + ')';
+        return PAPER_DEFAULT_STABLE;
     }
     let reposBlock = '';
     let depsBlock = '';
     if (foliaMode) {
-        const paperRange = paperVersionRange(apiVerForPom);
+        const paperVer = paperStableVersion(apiVerForPom);
         reposBlock = `        <!-- Paper API 仓库（Folia 兼容） -->
         <repository>
             <id>papermc-repo</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
-        </repository>
-        <!-- Sonatype OSS Snapshots（解析 adventure 等传递依赖的 SNAPSHOT） -->
-        <repository>
-            <id>sonatype-snapshots</id>
-            <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
-            <snapshots><enabled>true</enabled></snapshots>
         </repository>`;
         depsBlock = `        <!-- Paper API（Folia 兼容） -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>${paperRange}</version>
+            <version>${paperVer}</version>
             <scope>provided</scope>
         </dependency>`;
     } else {
