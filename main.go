@@ -24,8 +24,6 @@ import (
 	"time"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
-
-	"github.com/sqweek/dialog"
 )
 
 var (
@@ -556,9 +554,9 @@ func pickJavaDirHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	dir, err := dialog.Directory().Title("请选择 JDK 目录（包含 bin/javac）").Browse()
-	if err != nil {
-		// 用户取消选择
+	dir := pickDirectory()
+	if dir == "" {
+		// 用户取消或当前平台不支持弹框
 		json.NewEncoder(w).Encode(map[string]interface{}{"cancelled": true, "path": ""})
 		return
 	}
