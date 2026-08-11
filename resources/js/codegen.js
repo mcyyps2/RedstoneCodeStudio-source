@@ -1,5 +1,13 @@
 // 节点链接辅助
 
+// 全局 Folia 兼容模式开关（由 generateJava 根据 UI 开关设置）
+let foliaModeEnabled = false;
+
+// 判断当前是否处于 Folia 兼容模式
+function isFoliaMode() {
+    return foliaModeEnabled;
+}
+
 function getLinkedSourceNode(node, inputName) {
     if (!node.inputs || !litegraphGraph) return null;
     const inp = node.inputs.find(i => i.name === inputName);
@@ -279,6 +287,12 @@ function resolveLocation(node, inputName) {
         const worldExpr = resolveString(src, "世界", '"world"');
         return `__parseLocation(${JSON.stringify(src.properties.coords)}, ${worldExpr}, ${resolvePlayerInput(node, "玩家")})`;
     }
+    if (src.type === "convert/strToLocation") {
+        // 字符串转坐标转换节点 → 解析为 Location
+        const strExpr = resolveString(src, "字符串", '"100,64,200"');
+        const worldExpr = resolveString(src, "世界", '"world"');
+        return `__parseLocation(${strExpr}, ${worldExpr}, ${resolvePlayerInput(node, "玩家")})`;
+    }
     return "player.getLocation()";
 }
 
@@ -381,13 +395,23 @@ function traverseExec(startNode, indent, imports) {
             case "player/teleportToCoords": {
                 imports.add("import org.bukkit.Location;");
                 const locSrc = getLinkedSourceNode(cur, "位置");
-                if (locSrc) {
-                    const locExpr = resolveLocation(cur, "位置");
-                    lines.push(`${i}${p}.teleport(${locExpr});`);
+                if (foliaModeEnabled) {
+                    // Folia：使用异步传送（teleportAsync），可跨区域
+                    if (locSrc) {
+                        const locExpr = resolveLocation(cur, "位置");
+                        lines.push(`${i}${p}.teleportAsync(${locExpr});`);
+                    } else {
+                        const worldExpr = resolveString(cur, "世界", '"world"');
+                        lines.push(`${i}${p}.teleportAsync(new Location(${p}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
+                    }
                 } else {
-                    // 未连线时 fallback 到"世界"输入 + 默认坐标 (0,64,0)
-                    const worldExpr = resolveString(cur, "世界", '"world"');
-                    lines.push(`${i}${p}.teleport(new Location(${p}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
+                    if (locSrc) {
+                        const locExpr = resolveLocation(cur, "位置");
+                        lines.push(`${i}${p}.teleport(${locExpr});`);
+                    } else {
+                        const worldExpr = resolveString(cur, "世界", '"world"');
+                        lines.push(`${i}${p}.teleport(new Location(${p}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
+                    }
                 }
                 break;
             }
@@ -483,9 +507,16 @@ function traverseExec(startNode, indent, imports) {
                 const delayedLines = [];
                 const delayedNode = findNextExec(cur, 1);
                 if (delayedNode) traverseExecInto(delayedNode, indent + "    ", imports, delayedLines);
-                lines.push(`${i}Bukkit.getScheduler().runTaskLater(this, () -> {`);
-                delayedLines.forEach(l => lines.push(l));
-                lines.push(`${i}}, ${delay}L);`);
+                if (foliaModeEnabled) {
+                    // Folia：全局区域调度器，延迟执行
+                    lines.push(`${i}Bukkit.getGlobalRegionScheduler().runDelayed(this, __t -> {`);
+                    delayedLines.forEach(l => lines.push(l));
+                    lines.push(`${i}}, ${delay});`);
+                } else {
+                    lines.push(`${i}Bukkit.getScheduler().runTaskLater(this, () -> {`);
+                    delayedLines.forEach(l => lines.push(l));
+                    lines.push(`${i}}, ${delay}L);`);
+                }
                 cur = findNextExec(cur, 0); continue;
             }
             case "server/runTaskTimer": {
@@ -495,9 +526,16 @@ function traverseExec(startNode, indent, imports) {
                 const timerLines = [];
                 const timerNode = findNextExec(cur, 1);
                 if (timerNode) traverseExecInto(timerNode, indent + "    ", imports, timerLines);
-                lines.push(`${i}Bukkit.getScheduler().runTaskTimer(this, () -> {`);
-                timerLines.forEach(l => lines.push(l));
-                lines.push(`${i}}, ${initDelay}L, ${interval}L);`);
+                if (foliaModeEnabled) {
+                    // Folia：全局区域调度器，固定周期执行
+                    lines.push(`${i}Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, __t -> {`);
+                    timerLines.forEach(l => lines.push(l));
+                    lines.push(`${i}}, ${initDelay}, ${interval});`);
+                } else {
+                    lines.push(`${i}Bukkit.getScheduler().runTaskTimer(this, () -> {`);
+                    timerLines.forEach(l => lines.push(l));
+                    lines.push(`${i}}, ${initDelay}L, ${interval}L);`);
+                }
                 cur = findNextExec(cur, 0); continue;
             }
             case "server/forEachPlayer": {
@@ -506,9 +544,18 @@ function traverseExec(startNode, indent, imports) {
                 const perPlayerLines = [];
                 const perPlayerNode = findNextExec(cur, 1);
                 if (perPlayerNode) traverseExecInto(perPlayerNode, indent + "    ", imports, perPlayerLines);
-                lines.push(`${i}for (Player __loopPlayer : Bukkit.getOnlinePlayers()) {`);
-                perPlayerLines.forEach(l => lines.push(l.replace(/\bplayer\b/g, "__loopPlayer")));
-                lines.push(`${i}}`);
+                if (foliaModeEnabled) {
+                    // Folia：每个玩家在其所在区域调度执行
+                    lines.push(`${i}for (Player __loopPlayer : Bukkit.getOnlinePlayers()) {`);
+                    lines.push(`${i}    __loopPlayer.getScheduler().run(this, __t -> {`);
+                    perPlayerLines.forEach(l => lines.push(l.replace(/\bplayer\b/g, "__loopPlayer")));
+                    lines.push(`${i}    }, () -> {});`);
+                    lines.push(`${i}}`);
+                } else {
+                    lines.push(`${i}for (Player __loopPlayer : Bukkit.getOnlinePlayers()) {`);
+                    perPlayerLines.forEach(l => lines.push(l.replace(/\bplayer\b/g, "__loopPlayer")));
+                    lines.push(`${i}}`);
+                }
                 cur = findNextExec(cur, 0); continue;
             }
             case "server/broadcastToOps": {
@@ -520,9 +567,16 @@ function traverseExec(startNode, indent, imports) {
                 imports.add("import org.bukkit.Bukkit;");
                 imports.add("import org.bukkit.entity.Player;");
                 const reason2 = resolveString(cur, "原因", '"服务器维护中"');
-                lines.push(`${i}for (Player __kp : Bukkit.getOnlinePlayers()) {`);
-                lines.push(`${i}    __kp.kickPlayer(${reason2});`);
-                lines.push(`${i}}`);
+                if (foliaModeEnabled) {
+                    // Folia：每个玩家在其所在区域调度踢出
+                    lines.push(`${i}for (Player __kp : Bukkit.getOnlinePlayers()) {`);
+                    lines.push(`${i}    __kp.getScheduler().run(this, __t -> __kp.kickPlayer(${reason2}), () -> {});`);
+                    lines.push(`${i}}`);
+                } else {
+                    lines.push(`${i}for (Player __kp : Bukkit.getOnlinePlayers()) {`);
+                    lines.push(`${i}    __kp.kickPlayer(${reason2});`);
+                    lines.push(`${i}}`);
+                }
                 break;
             }
             case "server/setMotd": {
@@ -710,27 +764,52 @@ function traverseExec(startNode, indent, imports) {
                 const successNode = findNextExec(cur, 1), failNode = findNextExec(cur, 2);
                 if (successNode) traverseExecInto(successNode, indent + "        ", imports, successLines);
                 if (failNode) traverseExecInto(failNode, indent + "        ", imports, failLines);
-                lines.push(`${i}Bukkit.getScheduler().runTaskAsynchronously(this, () -> {`);
-                lines.push(`${i}    try {`);
-                lines.push(`${i}        HttpURLConnection __conn = (HttpURLConnection) new URL(${urlStr}).openConnection();`);
-                lines.push(`${i}        __conn.setRequestMethod("GET");`);
-                lines.push(`${i}        __conn.setConnectTimeout(5000);`);
-                lines.push(`${i}        StringBuilder __resp = new StringBuilder();`);
-                lines.push(`${i}        try (BufferedReader __br = new BufferedReader(new InputStreamReader(__conn.getInputStream()))) {`);
-                lines.push(`${i}            String __line;`);
-                lines.push(`${i}            while ((__line = __br.readLine()) != null) __resp.append(__line);`);
-                lines.push(`${i}        }`);
-                lines.push(`${i}        final String __responseBody = __resp.toString();`);
-                lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
-                successLines.forEach(l => lines.push(l));
-                lines.push(`${i}        });`);
-                lines.push(`${i}    } catch (Exception __e) {`);
-                lines.push(`${i}        getLogger().warning("HTTP请求失败: " + __e.getMessage());`);
-                lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
-                failLines.forEach(l => lines.push(l));
-                lines.push(`${i}        });`);
-                lines.push(`${i}    }`);
-                lines.push(`${i}});`);
+                if (foliaModeEnabled) {
+                    // Folia：异步调度 + 全局区域回调
+                    lines.push(`${i}Bukkit.getAsyncScheduler().runNow(this, __t -> {`);
+                    lines.push(`${i}    try {`);
+                    lines.push(`${i}        HttpURLConnection __conn = (HttpURLConnection) new URL(${urlStr}).openConnection();`);
+                    lines.push(`${i}        __conn.setRequestMethod("GET");`);
+                    lines.push(`${i}        __conn.setConnectTimeout(5000);`);
+                    lines.push(`${i}        StringBuilder __resp = new StringBuilder();`);
+                    lines.push(`${i}        try (BufferedReader __br = new BufferedReader(new InputStreamReader(__conn.getInputStream()))) {`);
+                    lines.push(`${i}            String __line;`);
+                    lines.push(`${i}            while ((__line = __br.readLine()) != null) __resp.append(__line);`);
+                    lines.push(`${i}        }`);
+                    lines.push(`${i}        final String __responseBody = __resp.toString();`);
+                    lines.push(`${i}        Bukkit.getGlobalRegionScheduler().run(this, __t2 -> {`);
+                    successLines.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    } catch (Exception __e) {`);
+                    lines.push(`${i}        getLogger().warning("HTTP请求失败: " + __e.getMessage());`);
+                    lines.push(`${i}        Bukkit.getGlobalRegionScheduler().run(this, __t2 -> {`);
+                    failLines.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    }`);
+                    lines.push(`${i}});`);
+                } else {
+                    lines.push(`${i}Bukkit.getScheduler().runTaskAsynchronously(this, () -> {`);
+                    lines.push(`${i}    try {`);
+                    lines.push(`${i}        HttpURLConnection __conn = (HttpURLConnection) new URL(${urlStr}).openConnection();`);
+                    lines.push(`${i}        __conn.setRequestMethod("GET");`);
+                    lines.push(`${i}        __conn.setConnectTimeout(5000);`);
+                    lines.push(`${i}        StringBuilder __resp = new StringBuilder();`);
+                    lines.push(`${i}        try (BufferedReader __br = new BufferedReader(new InputStreamReader(__conn.getInputStream()))) {`);
+                    lines.push(`${i}            String __line;`);
+                    lines.push(`${i}            while ((__line = __br.readLine()) != null) __resp.append(__line);`);
+                    lines.push(`${i}        }`);
+                    lines.push(`${i}        final String __responseBody = __resp.toString();`);
+                    lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
+                    successLines.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    } catch (Exception __e) {`);
+                    lines.push(`${i}        getLogger().warning("HTTP请求失败: " + __e.getMessage());`);
+                    lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
+                    failLines.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    }`);
+                    lines.push(`${i}});`);
+                }
                 cur = findNextExec(cur, 0); continue;
             }
             case "network/httpPost": {
@@ -745,32 +824,62 @@ function traverseExec(startNode, indent, imports) {
                 const successNode2 = findNextExec(cur, 1), failNode2 = findNextExec(cur, 2);
                 if (successNode2) traverseExecInto(successNode2, indent + "        ", imports, successLines2);
                 if (failNode2) traverseExecInto(failNode2, indent + "        ", imports, failLines2);
-                lines.push(`${i}Bukkit.getScheduler().runTaskAsynchronously(this, () -> {`);
-                lines.push(`${i}    try {`);
-                lines.push(`${i}        HttpURLConnection __conn = (HttpURLConnection) new URL(${urlStr2}).openConnection();`);
-                lines.push(`${i}        __conn.setRequestMethod("POST");`);
-                lines.push(`${i}        __conn.setDoOutput(true);`);
-                lines.push(`${i}        __conn.setRequestProperty("Content-Type", "application/json");`);
-                lines.push(`${i}        __conn.setConnectTimeout(5000);`);
-                lines.push(`${i}        try (OutputStream __os = __conn.getOutputStream()) {`);
-                lines.push(`${i}            __os.write(${bodyStr}.getBytes(java.nio.charset.StandardCharsets.UTF_8));`);
-                lines.push(`${i}        }`);
-                lines.push(`${i}        StringBuilder __resp = new StringBuilder();`);
-                lines.push(`${i}        try (BufferedReader __br = new BufferedReader(new InputStreamReader(__conn.getInputStream()))) {`);
-                lines.push(`${i}            String __line;`);
-                lines.push(`${i}            while ((__line = __br.readLine()) != null) __resp.append(__line);`);
-                lines.push(`${i}        }`);
-                lines.push(`${i}        final String __responseBody = __resp.toString();`);
-                lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
-                successLines2.forEach(l => lines.push(l));
-                lines.push(`${i}        });`);
-                lines.push(`${i}    } catch (Exception __e) {`);
-                lines.push(`${i}        getLogger().warning("HTTP POST失败: " + __e.getMessage());`);
-                lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
-                failLines2.forEach(l => lines.push(l));
-                lines.push(`${i}        });`);
-                lines.push(`${i}    }`);
-                lines.push(`${i}});`);
+                if (foliaModeEnabled) {
+                    // Folia：异步调度 + 全局区域回调
+                    lines.push(`${i}Bukkit.getAsyncScheduler().runNow(this, __t -> {`);
+                    lines.push(`${i}    try {`);
+                    lines.push(`${i}        HttpURLConnection __conn = (HttpURLConnection) new URL(${urlStr2}).openConnection();`);
+                    lines.push(`${i}        __conn.setRequestMethod("POST");`);
+                    lines.push(`${i}        __conn.setDoOutput(true);`);
+                    lines.push(`${i}        __conn.setRequestProperty("Content-Type", "application/json");`);
+                    lines.push(`${i}        __conn.setConnectTimeout(5000);`);
+                    lines.push(`${i}        try (OutputStream __os = __conn.getOutputStream()) {`);
+                    lines.push(`${i}            __os.write(${bodyStr}.getBytes(java.nio.charset.StandardCharsets.UTF_8));`);
+                    lines.push(`${i}        }`);
+                    lines.push(`${i}        StringBuilder __resp = new StringBuilder();`);
+                    lines.push(`${i}        try (BufferedReader __br = new BufferedReader(new InputStreamReader(__conn.getInputStream()))) {`);
+                    lines.push(`${i}            String __line;`);
+                    lines.push(`${i}            while ((__line = __br.readLine()) != null) __resp.append(__line);`);
+                    lines.push(`${i}        }`);
+                    lines.push(`${i}        final String __responseBody = __resp.toString();`);
+                    lines.push(`${i}        Bukkit.getGlobalRegionScheduler().run(this, __t2 -> {`);
+                    successLines2.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    } catch (Exception __e) {`);
+                    lines.push(`${i}        getLogger().warning("HTTP POST失败: " + __e.getMessage());`);
+                    lines.push(`${i}        Bukkit.getGlobalRegionScheduler().run(this, __t2 -> {`);
+                    failLines2.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    }`);
+                    lines.push(`${i}});`);
+                } else {
+                    lines.push(`${i}Bukkit.getScheduler().runTaskAsynchronously(this, () -> {`);
+                    lines.push(`${i}    try {`);
+                    lines.push(`${i}        HttpURLConnection __conn = (HttpURLConnection) new URL(${urlStr2}).openConnection();`);
+                    lines.push(`${i}        __conn.setRequestMethod("POST");`);
+                    lines.push(`${i}        __conn.setDoOutput(true);`);
+                    lines.push(`${i}        __conn.setRequestProperty("Content-Type", "application/json");`);
+                    lines.push(`${i}        __conn.setConnectTimeout(5000);`);
+                    lines.push(`${i}        try (OutputStream __os = __conn.getOutputStream()) {`);
+                    lines.push(`${i}            __os.write(${bodyStr}.getBytes(java.nio.charset.StandardCharsets.UTF_8));`);
+                    lines.push(`${i}        }`);
+                    lines.push(`${i}        StringBuilder __resp = new StringBuilder();`);
+                    lines.push(`${i}        try (BufferedReader __br = new BufferedReader(new InputStreamReader(__conn.getInputStream()))) {`);
+                    lines.push(`${i}            String __line;`);
+                    lines.push(`${i}            while ((__line = __br.readLine()) != null) __resp.append(__line);`);
+                    lines.push(`${i}        }`);
+                    lines.push(`${i}        final String __responseBody = __resp.toString();`);
+                    lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
+                    successLines2.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    } catch (Exception __e) {`);
+                    lines.push(`${i}        getLogger().warning("HTTP POST失败: " + __e.getMessage());`);
+                    lines.push(`${i}        Bukkit.getScheduler().runTask(this, () -> {`);
+                    failLines2.forEach(l => lines.push(l));
+                    lines.push(`${i}        });`);
+                    lines.push(`${i}    }`);
+                    lines.push(`${i}});`);
+                }
                 cur = findNextExec(cur, 0); continue;
             }
         }
@@ -792,6 +901,8 @@ function traverseExecInto(startNode, indent, imports, lines) {
 function generateJava() {
     if (!editors.java) return;
     const graph = litegraphGraph;
+    // 读取 Folia 兼容开关（全局标志，供调度器节点判断）
+    foliaModeEnabled = !!(document.getElementById('foliaMode')?.checked);
     const imports = new Set([
         "import org.bukkit.plugin.java.JavaPlugin;",
         "import org.bukkit.Bukkit;",
@@ -1000,6 +1111,7 @@ function generateJava() {
 
     // __parseLocation 工具方法（坐标文本 → Location，可指定世界名）
     const hasCoordNode = graph.findNodesByType("values/coordinate").length > 0 ||
+        graph.findNodesByType("convert/strToLocation").length > 0 ||
         graph.findNodesByType("player/teleportToCoords").some(n =>
             n.inputs && n.inputs.some(i => i.name === "位置" && i.link != null)
         );
@@ -1045,6 +1157,7 @@ function generatePluginYml() {
     const desc = document.getElementById('description')?.value || '';
     const load = document.getElementById('loadTime')?.value || 'POSTWORLD';
     const soft = document.getElementById('softDepend')?.value || '';
+    const foliaMode = document.getElementById('foliaMode')?.checked || false;
 
     let yml = `name: ${name}\nmain: ${main}\nversion: ${version}\napi-version: ${api}\n`;
     if (author) yml += `author: ${author}\n`;
@@ -1052,6 +1165,7 @@ function generatePluginYml() {
     if (desc) yml += `description: ${desc}\n`;
     if (load !== 'POSTWORLD') yml += `load: ${load}\n`;
     if (soft) yml += `softdepend: [${soft.split(',').map(s => s.trim()).join(', ')}]\n`;
+    if (foliaMode) yml += `folia-supported: true\n`;
 
     const cmdNodes = litegraphGraph ? litegraphGraph.findNodesByType("command/onCommand") : [];
     if (cmdNodes.length > 0) {
@@ -1119,8 +1233,45 @@ function generatePomXml() {
     const version = document.getElementById('pluginVersion')?.value || '1.0.0';
     const javaVer = document.getElementById('javaVersion')?.value || '17';
     const spigotVer = document.getElementById('spigotVersion')?.value || '1.20.4-R0.1-SNAPSHOT';
+    const foliaMode = document.getElementById('foliaMode')?.checked || false;
     const { cls } = getMainClassParts();
     const pluginName = document.getElementById('pluginName')?.value || 'MagicPlugin';
+
+    // Folia 模式使用 Paper API（支持 Folia 调度器）；否则使用 Spigot API
+    let reposBlock = '';
+    let depsBlock = '';
+    if (foliaMode) {
+        reposBlock = `        <!-- Paper API 仓库（Folia 兼容） -->
+        <repository>
+            <id>papermc-repo</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>`;
+        depsBlock = `        <!-- Paper API（Folia 兼容） -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>${spigotVer}</version>
+            <scope>provided</scope>
+        </dependency>`;
+    } else {
+        reposBlock = `        <!-- Spigot API 仓库 -->
+        <repository>
+            <id>spigot-repo</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+        <!-- BungeeCord（用于 ActionBar） -->
+        <repository>
+            <id>bungeecord-repo</id>
+            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </repository>`;
+        depsBlock = `        <!-- Spigot API -->
+        <dependency>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
+            <version>${spigotVer}</version>
+            <scope>provided</scope>
+        </dependency>`;
+    }
 
     const pom = `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -1145,26 +1296,11 @@ function generatePomXml() {
     </properties>
 
     <repositories>
-        <!-- Spigot API 仓库 -->
-        <repository>
-            <id>spigot-repo</id>
-            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
-        </repository>
-        <!-- BungeeCord（用于 ActionBar） -->
-        <repository>
-            <id>bungeecord-repo</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </repository>
+${reposBlock}
     </repositories>
 
     <dependencies>
-        <!-- Spigot API -->
-        <dependency>
-            <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
-            <version>${spigotVer}</version>
-            <scope>provided</scope>
-        </dependency>
+${depsBlock}
     </dependencies>
 
     <build>

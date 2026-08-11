@@ -1056,6 +1056,13 @@ function registerAllNodes() {
         this.size = [190, 55];
     }, C.cvtFg, C.cvtBg);
 
+    defNode("convert/strToLocation", "字符串转坐标", function () {
+        this.addInput("字符串", "string");
+        this.addInput("世界", "string");
+        this.addOutput("位置", "location");
+        this.size = [190, 80];
+    }, C.cvtFg, C.cvtBg);
+
     // 类型判断节点
     function CheckTypeNode() {
         this.addInput("执行流", "exec");

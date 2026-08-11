@@ -88,13 +88,34 @@ function renderJavaHomes(homes) {
     if (status) status.textContent = '共 ' + homes.length + ' 个 Java 环境';
 }
 
-// 点击「添加 Java」：后端弹出系统文件夹选择框 → 选择 JDK 目录 → 添加并刷新
-async function addJavaHome() {
+// 通用：将指定路径添加到 Java 环境（调用后端检测版本）
+async function addJavaHomePath(path, status) {
+    try {
+        const addResp = await fetch('/api/add-java', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        const data = await addResp.json();
+        if (data.error) {
+            if (status) status.textContent = data.error;
+            return false;
+        }
+        renderJavaHomes(data.javaHomes || []);
+        if (status) status.textContent = '已添加';
+        return true;
+    } catch (err) {
+        if (status) status.textContent = '添加失败：' + err.message;
+        return false;
+    }
+}
+
+// 点击「浏览…」：尝试调用系统目录选择框，选中的路径填入输入框并添加
+async function browseJavaHome() {
     const status = document.getElementById('javaHomeStatus');
     if (status) status.textContent = '请在弹出的窗口中选择 JDK 目录…';
 
     try {
-        // 1. 打开系统目录选择框
         const pickResp = await fetch('/api/pick-java-dir', { method: 'POST' });
         if (!pickResp.ok) throw new Error('无法打开目录选择框');
         const picked = await pickResp.json();
@@ -102,22 +123,27 @@ async function addJavaHome() {
             if (status) status.textContent = '';
             return; // 用户取消
         }
-        // 2. 添加选中的路径
-        const addResp = await fetch('/api/add-java', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: picked.path })
-        });
-        const data = await addResp.json();
-        if (data.error) {
-            if (status) status.textContent = data.error;
-            return;
-        }
-        renderJavaHomes(data.javaHomes || []);
-        if (status) status.textContent = '已添加';
+        // 把选中的路径填入输入框
+        const input = document.getElementById('javaPathInput');
+        if (input) input.value = picked.path;
+        await addJavaHomePath(picked.path, status);
     } catch (err) {
-        if (status) status.textContent = '添加失败：' + err.message;
+        // 平台不支持弹框时，提示用户手动输入
+        if (status) status.textContent = '无法打开目录选择框（当前平台可能不支持），请手动输入路径后点「添加」。';
     }
+}
+
+// 点击「添加」：读取输入框中的路径并添加
+async function addJavaHomeFromInput() {
+    const input = document.getElementById('javaPathInput');
+    const status = document.getElementById('javaHomeStatus');
+    if (!input) return;
+    const path = (input.value || '').trim();
+    if (!path) {
+        if (status) status.textContent = '请输入 JDK 目录路径。';
+        return;
+    }
+    await addJavaHomePath(path, status);
 }
 
 // 删除一个已记录的 Java 环境
@@ -142,7 +168,65 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof loadJavaHomes === 'function') {
         loadJavaHomes();
     }
+    if (typeof applyFoliaVersionRestriction === 'function') {
+        applyFoliaVersionRestriction();
+    }
 });
+
+// Folia 端仅支持 MC 1.19~26.2。开启 Folia 时，禁用低于 1.19 的版本选项。
+// Folia 主版本号最小为 1.19（19），旧命名 1.x；新命名如 26.2 直接解析为 26。
+function parseVersionNum(val) {
+    // 取首个数字段；如 "1.16" → 1，"26.2" → 26，"1.16.5-R0.1" → 1
+    const m = String(val).match(/^(\d+)\.(\d+)/);
+    if (!m) return Number(String(val).match(/^\d+/)?.[0] || 0);
+    // 旧命名 1.x：主版本 = x（如 1.19 → 19）
+    if (m[1] === '1') return Number(m[2]);
+    // 新命名年份版本：直接用大版本（如 26.2 → 26）
+    return Number(m[1]);
+}
+
+function applyFoliaVersionRestriction() {
+    const folia = document.getElementById('foliaMode');
+    const isFolia = folia ? folia.checked : false;
+    const minVer = 19; // Folia 最低支持 1.19
+
+    // 禁用游戏版本（apiVersion）中低于 1.19 的选项
+    const apiSel = document.getElementById('apiVersion');
+    if (apiSel) {
+        for (const opt of apiSel.options) {
+            const v = parseVersionNum(opt.value);
+            if (v > 0 && v < minVer) {
+                opt.disabled = isFolia;
+            }
+        }
+        // 若当前选中了被禁用的版本，自动切回最近的可选版本
+        if (isFolia) {
+            const cur = parseVersionNum(apiSel.value);
+            if (cur > 0 && cur < minVer) {
+                const valid = [...apiSel.options].filter(o => !o.disabled);
+                if (valid.length > 0) apiSel.value = valid[valid.length - 1].value;
+            }
+        }
+    }
+
+    // 禁用 Spigot/Paper 依赖版本（spigotVersion）中低于 1.19 的选项
+    const spigotSel = document.getElementById('spigotVersion');
+    if (spigotSel) {
+        for (const opt of spigotSel.options) {
+            const v = parseVersionNum(opt.value);
+            if (v > 0 && v < minVer) {
+                opt.disabled = isFolia;
+            }
+        }
+        if (isFolia) {
+            const cur = parseVersionNum(spigotSel.value);
+            if (cur > 0 && cur < minVer) {
+                const valid = [...spigotSel.options].filter(o => !o.disabled);
+                if (valid.length > 0) spigotSel.value = valid[valid.length - 1].value;
+            }
+        }
+    }
+}
 
 // 将 configEntries 渲染为可编辑的表单行
 function renderConfigEntries() {
