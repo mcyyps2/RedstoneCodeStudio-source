@@ -1239,7 +1239,8 @@ function generatePomXml() {
     const pluginName = document.getElementById('pluginName')?.value || 'MagicPlugin';
 
     // Folia 模式使用 Paper API（支持 Folia 调度器）；否则使用 Spigot API。
-    // Paper API 版本号格式与 Spigot 不同，用版本范围语法自动选择可用构建。
+    // Paper API 版本号格式（如 26.2.build.111-stable）与 Spigot 不同，
+    // 用版本范围语法让 Maven 自动解析到可用的 Paper API 构建。
     function paperVersionRange(av) {
         const m = String(av).match(/^(\d+)\.(\d+)/);
         if (!m) return '[' + av + ',)';
@@ -1258,6 +1259,12 @@ function generatePomXml() {
         <repository>
             <id>papermc-repo</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+        <!-- Sonatype OSS Snapshots（解析 adventure 等传递依赖的 SNAPSHOT） -->
+        <repository>
+            <id>sonatype-snapshots</id>
+            <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
+            <snapshots><enabled>true</enabled></snapshots>
         </repository>`;
         depsBlock = `        <!-- Paper API（Folia 兼容） -->
         <dependency>

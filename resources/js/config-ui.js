@@ -209,7 +209,9 @@ function applyFoliaVersionRestriction() {
         }
     }
 
-    // 禁用 Spigot/Paper 依赖版本（spigotVersion）中低于 1.19 的选项
+    // 禁用 Spigot/Paper 依赖版本（spigotVersion）中低于 1.19 的选项。
+    // 注意：不修改下拉框 value（保持原格式），Folia 模式下的 Paper API 版本
+    // 由 codegen 生成 pom 时根据游戏版本（apiVersion）映射。
     const spigotSel = document.getElementById('spigotVersion');
     if (spigotSel) {
         for (const opt of spigotSel.options) {
