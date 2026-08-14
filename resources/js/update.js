@@ -34,7 +34,7 @@ function _showUpdateModal(latestVer, isForced, htmlContent) {
     if (!modal) return;
 
     const changelogEl = document.getElementById('update-changelog');
-    if (changelogEl) changelogEl.innerHTML = htmlContent;
+    if (changelogEl) changelogEl.textContent = htmlContent;
 
     const verEl = document.getElementById('update-version-badge');
     if (verEl) verEl.textContent = 'v' + latestVer;

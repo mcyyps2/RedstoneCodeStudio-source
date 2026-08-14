@@ -185,6 +185,7 @@ set "INTERNAL_MAVEN_OPTS=--enable-native-access=ALL-UNNAMED %INTERNAL_MAVEN_OPTS
 "%JAVACMD%" ^
   %JVM_CONFIG_MAVEN_PROPS% ^
   %INTERNAL_MAVEN_OPTS% ^
+  --enable-final-field-mutation=ALL-UNNAMED ^
   %MAVEN_OPTS% ^
   %MAVEN_DEBUG_OPTS% ^
   -classpath %CLASSWORLDS_JAR% ^

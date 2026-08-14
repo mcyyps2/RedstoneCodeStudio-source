@@ -32,7 +32,7 @@ function _showAnnounceModal(htmlContent, contentHash) {
     if (!modal) return;
 
     const bodyEl = document.getElementById('announce-body');
-    if (bodyEl) bodyEl.innerHTML = htmlContent;
+    if (bodyEl) bodyEl.textContent = htmlContent;
 
     modal.dataset.contentHash = contentHash;
     modal.classList.remove('hidden');

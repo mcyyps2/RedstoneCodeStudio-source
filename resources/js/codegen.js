@@ -1275,6 +1275,7 @@ function generatePomXml() {
     }
     let reposBlock = '';
     let depsBlock = '';
+    let depMgmtBlock = '';
     if (foliaMode) {
         const paperVer = paperStableVersion(apiVerForPom);
         reposBlock = `        <!-- Paper API 仓库（Folia 兼容） -->
@@ -1288,6 +1289,14 @@ function generatePomXml() {
             <artifactId>paper-api</artifactId>
             <version>${paperVer}</version>
             <scope>provided</scope>
+        </dependency>`;
+        depMgmtBlock = `        <!-- 覆盖 paper-api 传递依赖中失效的 adventure-bom SNAPSHOT -->
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-bom</artifactId>
+            <version>4.17.0</version>
+            <type>pom</type>
+            <scope>import</scope>
         </dependency>`;
     } else {
         reposBlock = `        <!-- Spigot API 仓库 -->
@@ -1331,7 +1340,13 @@ function generatePomXml() {
         <maven.compiler.target>${javaVer}</maven.compiler.target>
     </properties>
 
-    <repositories>
+${depMgmtBlock ? `    <dependencyManagement>
+        <dependencies>
+${depMgmtBlock}
+        </dependencies>
+    </dependencyManagement>
+
+` : ''}    <repositories>
 ${reposBlock}
     </repositories>
 

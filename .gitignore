@@ -59,3 +59,9 @@ settings.json
 
 # 本机 Java 环境记录（个人环境数据，不上传）
 java-homes.json
+
+# CodeBuddy 工作区
+.codebuddy/
+
+# 持久化会话密钥
+.srv_secret

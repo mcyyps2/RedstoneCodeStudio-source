@@ -69,7 +69,9 @@ type StoredSession struct {
 	Exp   int64           `json:"exp"`
 }
 
-const _srvSecret = "rcs-srv-session-key-v1"
+// _srvSecret 持久化随机密钥（首次启动生成，存入 settings 旁的 secret 文件）
+var _srvSecret []byte
+var _secretFile string
 
 const (
 	_apiOrigin = "https://api.zeromi.cn"
@@ -197,6 +199,11 @@ func init() {
 	TempBuildDir = filepath.Join(ProgramDir, "builds")
 	SettingsFile = filepath.Join(ProgramDir, "settings.json")
 	JavaHomesFile = filepath.Join(ProgramDir, "java-homes.json")
+
+	_secretFile = filepath.Join(ProgramDir, ".srv_secret")
+
+	// 初始化持久化会话密钥
+	initSrvSecret()
 
 	// 启动时确保 Java 记录可用（读取记录→验证→失效则重新扫描→保存）
 	ensureJavaHomes()
@@ -682,7 +689,6 @@ type BuildRequest struct {
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(map[string]string{
 		"apiOrigin": _apiOrigin,
 	})
@@ -691,7 +697,6 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 func remotePassthroughHandler(remotePath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		client := &http.Client{Timeout: 8 * time.Second}
 		targetURL := _apiOrigin + remotePath
@@ -720,7 +725,7 @@ func main() {
 	os.MkdirAll(TempBuildDir, 0755)
 
 	port := getFreePort()
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	url := fmt.Sprintf("http://localhost:%d", port)
 
 	http.Handle("/", http.FileServer(http.Dir(filepath.Join(ProgramDir, "resources"))))
@@ -749,7 +754,7 @@ func main() {
 }
 
 func getFreePort() int {
-	ln, err := net.Listen("tcp", ":0")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 8080
 	}
@@ -769,9 +774,28 @@ func waitForServer(url string) {
 	}
 }
 
+// initSrvSecret 加载或生成持久化的 32 字节会话密钥
+func initSrvSecret() {
+	if data, err := os.ReadFile(_secretFile); err == nil && len(data) == 32 {
+		_srvSecret = data
+		log.Printf("已加载持久化会话密钥")
+		return
+	}
+	// 生成新的 32 字节随机密钥
+	key := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		log.Fatalf("无法生成会话密钥: %v", err)
+	}
+	_srvSecret = key
+	if err := os.WriteFile(_secretFile, key, 0600); err != nil {
+		log.Printf("警告: 无法持久化会话密钥: %v（本次运行仍可用）", err)
+	}
+	log.Printf("已生成并持久化新的会话密钥")
+}
+
 func deriveMachineKey() []byte {
 	hostname, _ := os.Hostname()
-	mac := hmac.New(sha256.New, []byte(_srvSecret))
+	mac := hmac.New(sha256.New, _srvSecret)
 	mac.Write([]byte("machine-session-key:"))
 	mac.Write([]byte(hostname))
 	return mac.Sum(nil)
@@ -923,7 +947,6 @@ func saveSettings(s AppSettings) error {
 
 func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	switch r.Method {
 	case http.MethodGet:
@@ -949,6 +972,70 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// patchAdventureBomSnapshot 修复 paper-api 1.20.5 的 adventure-bom:4.17.0-SNAPSHOT 缺失问题。
+func patchAdventureBomSnapshot() {
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	snapshotDir := filepath.Join(userHome, ".m2", "repository", "net", "kyori", "adventure-bom", "4.17.0-SNAPSHOT")
+	metadataLocal := filepath.Join(snapshotDir, "maven-metadata-local.xml")
+	if _, err := os.Stat(metadataLocal); err == nil {
+		return
+	}
+	// 清理之前下载失败留下的 .lastUpdated 缓存文件
+	if entries, err := os.ReadDir(snapshotDir); err == nil {
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".lastUpdated") {
+				os.Remove(filepath.Join(snapshotDir, entry.Name()))
+			}
+		}
+	}
+	// 从 PaperMC 仓库下载 4.17.0 正式版的 pom
+	pomURL := "https://repo.papermc.io/repository/maven-public/net/kyori/adventure-bom/4.17.0/adventure-bom-4.17.0.pom"
+	resp, err := http.Get(pomURL)
+	if err != nil {
+		log.Printf("patchAdventureBomSnapshot: 下载 4.17.0 pom 失败: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		log.Printf("patchAdventureBomSnapshot: 下载 4.17.0 pom 返回 %d", resp.StatusCode)
+		return
+	}
+	pomData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("patchAdventureBomSnapshot: 读取 pom 内容失败: %v", err)
+		return
+	}
+	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
+		log.Printf("patchAdventureBomSnapshot: 创建目录失败: %v", err)
+		return
+	}
+	pomPath := filepath.Join(snapshotDir, "adventure-bom-4.17.0-SNAPSHOT.pom")
+	if err := os.WriteFile(pomPath, pomData, 0644); err != nil {
+		log.Printf("patchAdventureBomSnapshot: 写入 pom 失败: %v", err)
+		return
+	}
+	metadata := `<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>net.kyori</groupId>
+  <artifactId>adventure-bom</artifactId>
+  <version>4.17.0-SNAPSHOT</version>
+  <versioning>
+    <snapshot>
+      <localCopy>true</localCopy>
+    </snapshot>
+    <lastUpdated>` + time.Now().Format("20060102150405") + `</lastUpdated>
+  </versioning>
+</metadata>`
+	if err := os.WriteFile(metadataLocal, []byte(metadata), 0644); err != nil {
+		log.Printf("patchAdventureBomSnapshot: 写入 metadata 失败: %v", err)
+		return
+	}
+	log.Printf("patchAdventureBomSnapshot: 已将 adventure-bom:4.17.0 安装为 4.17.0-SNAPSHOT")
+}
+
 func buildHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("收到编译请求，方法: %s, URL: %s", r.Method, r.URL.Path)
 
@@ -960,6 +1047,24 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 	var req BuildRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// 安全校验：防止路径穿越和非法字符
+	if err := validateBuildRequest(&req); err != nil {
+		log.Printf("构建请求校验失败: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// 安全校验：检测 pom.xml 中是否包含危险插件
+	if req.PomXml != "" && isPomXmlDangerous(req.PomXml) {
+		log.Printf("pom.xml 包含危险插件，拒绝构建")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "pom.xml 包含危险插件，禁止构建"})
 		return
 	}
 
@@ -1009,19 +1114,39 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.PomXml != "" {
-		writeFile(filepath.Join(projectDir, "pom.xml"), req.PomXml)
+		if err := writeFile(filepath.Join(projectDir, "pom.xml"), req.PomXml); err != nil {
+			log.Printf("写入 pom.xml 失败: %v", err)
+			http.Error(w, "无法写入 pom.xml", http.StatusInternalServerError)
+			return
+		}
 	} else {
-		writeFile(filepath.Join(projectDir, "pom.xml"), getPom(req))
+		if err := writeFile(filepath.Join(projectDir, "pom.xml"), getPom(req)); err != nil {
+			log.Printf("写入 pom.xml 失败: %v", err)
+			http.Error(w, "无法写入 pom.xml", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if req.PluginYaml != "" {
-		writeFile(filepath.Join(resDir, "plugin.yml"), req.PluginYaml)
+		if err := writeFile(filepath.Join(resDir, "plugin.yml"), req.PluginYaml); err != nil {
+			log.Printf("写入 plugin.yml 失败: %v", err)
+			http.Error(w, "无法写入 plugin.yml", http.StatusInternalServerError)
+			return
+		}
 	} else {
-		writeFile(filepath.Join(resDir, "plugin.yml"), getPluginYml(req))
+		if err := writeFile(filepath.Join(resDir, "plugin.yml"), getPluginYml(req)); err != nil {
+			log.Printf("写入 plugin.yml 失败: %v", err)
+			http.Error(w, "无法写入 plugin.yml", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if req.ConfigYaml != "" {
-		writeFile(filepath.Join(resDir, "config.yml"), req.ConfigYaml)
+		if err := writeFile(filepath.Join(resDir, "config.yml"), req.ConfigYaml); err != nil {
+			log.Printf("写入 config.yml 失败: %v", err)
+			http.Error(w, "无法写入 config.yml", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	javaFilePath := filepath.Join(javaSourceDir, req.MainClass+".java")
@@ -1034,11 +1159,14 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 	mavenCmd := MavenCommand
 	mavenHome := filepath.Join(ProgramDir, "resources", "maven")
 
+	// 修复 paper-api 1.20.5 的 adventure-bom:4.17.0-SNAPSHOT 缺失问题
+	patchAdventureBomSnapshot()
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" && strings.HasSuffix(mavenCmd, ".cmd") {
-		cmd = exec.CommandContext(buildCtx, "cmd", "/c", mavenCmd, "clean", "package", "-DskipTests", "-q")
+		cmd = exec.CommandContext(buildCtx, "cmd", "/c", mavenCmd, "clean", "package", "-DskipTests", "-q", "-U")
 	} else {
-		cmd = exec.CommandContext(buildCtx, mavenCmd, "clean", "package", "-DskipTests", "-q")
+		cmd = exec.CommandContext(buildCtx, mavenCmd, "clean", "package", "-DskipTests", "-q", "-U")
 	}
 	cmd.Dir = projectDir
 	// 根据所需 Java 版本解析合适的 JDK 并设置 JAVA_HOME（支持 Java 25 等新版本）
@@ -1046,7 +1174,7 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 	if jh := resolveJavaHome(req.JavaVersion); jh != "" {
 		envList = append(envList, "JAVA_HOME="+jh, "PATH="+jh+string(os.PathListSeparator)+filepath.Join(jh, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
-	cmd.Env = append(envList, "MAVEN_HOME="+mavenHome)
+	cmd.Env = append(envList, "MAVEN_HOME="+mavenHome, "MAVEN_OPTS=--enable-final-field-mutation=ALL-UNNAMED")
 
 	// Windows 下 cmd /c 会派生子进程，需连同整个进程树一起结束
 	if runtime.GOOS == "windows" {
@@ -1076,10 +1204,26 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		decodedOutput := decodeGBK(output)
 		log.Printf("Maven 编译失败: %v, 输出: %s", err, decodedOutput)
+		// 过滤掉 JVM WARNING 行
+		filteredLines := []string{}
+		for _, line := range strings.Split(decodedOutput, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "WARNING: ") && (strings.Contains(trimmed, "final field") || strings.Contains(trimmed, "final-field-mutation") || strings.Contains(trimmed, "unnamed module")) {
+				continue
+			}
+			if strings.HasPrefix(trimmed, "WARNING: Mutating final fields") {
+				continue
+			}
+			filteredLines = append(filteredLines, line)
+		}
+		filteredOutput := strings.Join(filteredLines, "\n")
+		if len(filteredOutput) > 2000 {
+			filteredOutput = filteredOutput[:2000] + "...(已截断)"
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("Maven 编译失败: %v\n%s", err, decodedOutput),
+			"error": fmt.Sprintf("Maven 编译失败: %v\n%s", err, filteredOutput),
 		})
 		return
 	}
@@ -1123,7 +1267,7 @@ func buildHandler(w http.ResponseWriter, r *http.Request) {
 		}()
 	}()
 
-	w.Header().Set("Content-Disposition", `attachment; filename="`+req.PluginName+`.jar"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(req.PluginName)+`.jar"`)
 	w.Header().Set("Content-Type", "application/java-archive")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(jarData)))
 	w.WriteHeader(http.StatusOK)
@@ -1208,6 +1352,104 @@ website: ` + req.Website + `
 api-version: ` + apiVer
 }
 
-func writeFile(path, content string) {
-	os.WriteFile(path, []byte(content), 0644)
+// validateBuildRequest 校验构建请求中的字段，防止路径穿越和非法字符
+func validateBuildRequest(req *BuildRequest) error {
+	if !isValidPluginName(req.PluginName) {
+		return fmt.Errorf("插件名称不合法（仅允许字母数字、下划线、短横线，1-64 字符）")
+	}
+	if !isValidJavaIdentifier(req.MainClass) {
+		return fmt.Errorf("主类名不合法（仅允许字母数字、下划线）")
+	}
+	if !isValidPackageName(req.PackageName) {
+		return fmt.Errorf("包名不合法（仅允许字母数字、点、下划线）")
+	}
+	return nil
+}
+
+func isValidPluginName(s string) bool {
+	if len(s) == 0 || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidJavaIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidPackageName(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// isPomXmlDangerous 检测 pom.xml 中是否包含可能执行任意命令的危险插件或脚本
+func isPomXmlDangerous(pom string) bool {
+	lower := strings.ToLower(pom)
+	dangerous := []string{
+		"exec-maven-plugin",
+		"maven-antrun-plugin",
+		"groovy-maven-plugin",
+		"gmavenplus-plugin",
+		"maven-invoker-plugin",
+		"sql-maven-plugin",
+		"sisu-maven-plugin",
+		"gmaven-plugin",
+		"<ant ",
+		"<ant>",
+		"<exec ",
+		"<script",
+		"javascript:",
+		"beanshell",
+		"jruby",
+		"jython",
+	}
+	for _, d := range dangerous {
+		if strings.Contains(lower, d) {
+			return true
+		}
+	}
+	return false
+}
+
+// sanitizeFilename 过滤文件名中的危险字符（防止 HTTP 头注入）
+func sanitizeFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r == '"' || r == '\\' || r == '/' || r == '\r' || r == '\n' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	s := b.String()
+	if s == "" {
+		s = "plugin"
+	}
+	return s
+}
+
+func writeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0644)
 }

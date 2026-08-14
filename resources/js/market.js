@@ -173,7 +173,7 @@ function _buildCard(tpl) {
     const loggedIn = (typeof AuthStore !== 'undefined') && AuthStore.isLoggedIn();
 
     const importBtn = loggedIn
-        ? `<button class="mkt-import-btn" onclick="event.stopPropagation();quickImportTemplate(${tpl.id})" title="导入到工作区">
+        ? `<button class="mkt-import-btn" onclick="event.stopPropagation();quickImportTemplate(${Number(tpl.id)})" title="导入到工作区">
                导入
            </button>`
         : `<button class="mkt-import-btn mkt-import-btn-locked" onclick="event.stopPropagation();openAuthModal('login','')" title="登录后可下载">

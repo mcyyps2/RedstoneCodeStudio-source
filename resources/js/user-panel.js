@@ -72,7 +72,7 @@ function _renderMyUploads(templates) {
                </div>` : '';
 
         return `
-        <div class="up-card" id="upc-${tpl.id}">
+        <div class="up-card" id="upc-${Number(tpl.id)}">
             <div class="up-card-icon" style="background:${meta.bg};">${meta.emoji}</div>
             <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -90,7 +90,7 @@ function _renderMyUploads(templates) {
                 ${rejectNote}
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-                <button onclick="deleteMyUpload(${tpl.id})"
+                <button onclick="deleteMyUpload(${Number(tpl.id)})"
                     style="background:#fff5f5;color:#dc2626;border:1px solid #fecaca;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:background .12s;white-space:nowrap;"
                     onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff5f5'">
                     删除
