@@ -9,6 +9,9 @@ document.addEventListener('keydown', function (e) {
     if (isCtrl && isShift && (key === 'I' || key === 'J' || key === 'C' || key === 'K' || key === 'S')) {
         e.preventDefault(); e.stopPropagation(); return;
     }
+    // 放行撤销/重做快捷键
+    if (isCtrl && !isShift && (key === 'Z' || key === 'Y')) { return; }
+    if (isCtrl && isShift && key === 'Z') { return; } // Ctrl+Shift+Z 也作为重做
     if (isCtrl && key === 'S') { e.preventDefault(); e.stopPropagation(); return; }
 });
 
@@ -70,3 +73,23 @@ document.addEventListener('DOMContentLoaded', function () {
         if (typeof initAnnounce    === 'function') initAnnounce();
     }, 800);
 });
+
+// 代码锁定/解锁切换
+function toggleCodeLock() {
+    _codeLocked = !_codeLocked;
+    const btn = document.getElementById('code-lock-btn');
+    if (btn) {
+        if (_codeLocked) {
+            btn.innerHTML = '<i class="fa-solid fa-lock"></i> 已锁定';
+            btn.style.color = '#dc2626';
+            btn.title = '代码已锁定，节点变更不会覆盖编辑器内容。点击解锁并重新生成';
+            if (typeof showStatus === 'function') showStatus('代码已锁定 — 节点变更不会覆盖你的修改');
+        } else {
+            btn.innerHTML = '<i class="fa-solid fa-lock-open"></i> 锁定代码';
+            btn.style.color = '';
+            btn.title = '锁定后节点变更不会覆盖编辑器内容';
+            if (typeof showStatus === 'function') showStatus('代码已解锁 — 重新生成代码');
+            regenerateAll();
+        }
+    }
+}

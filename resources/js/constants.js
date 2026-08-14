@@ -1,5 +1,8 @@
 const APP_VERSION = 20260810;
 
+// 代码锁定：锁定后 regenerateAll 不覆盖编辑器内容
+let _codeLocked = false;
+
 // LiteGraph 画布与图实例
 let litegraphCanvas, litegraphGraph;
 
@@ -33,3 +36,9 @@ const C = {
     // 类型转换
     cvtBg: "#081828", cvtFg: "#1a7ab0",
 };
+
+// 撤销/重做历史栈
+let _undoStack = [];
+let _redoStack = [];
+const _MAX_UNDO = 50;
+let _isUndoing = false;

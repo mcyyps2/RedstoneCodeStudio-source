@@ -1173,6 +1173,11 @@
 
             <div id="auth-header-area"></div>
 
+            <button id="code-lock-btn" onclick="toggleCodeLock()" title="锁定后节点变更不会覆盖编辑器内容"
+                class="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-lg font-medium text-sm border border-gray-300 active:scale-95 transition-all">
+                <i class="fa-solid fa-lock-open"></i> 锁定代码
+            </button>
+
             <button id="compileBtn" onclick="compilePlugin()"
                 class="flex items-center gap-2 bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg font-semibold text-sm border border-gray-700 active:scale-95 transition-all">
                 <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2.5"

@@ -261,6 +261,32 @@ function resolvePlayerInput(node, inputName) {
     return resolvePlayer(src);
 }
 
+// 判断某个节点的玩家输入是否来自“按名获取玩家”或“字符串转玩家”这类不可信来源。
+// 这类来源通过 Bukkit.getPlayer(name) 获取玩家，如果玩家不在线会返回 null，
+// 后续直接调用其方法会导致空指针异常（NPE）崩服，因此需要空指针保护。
+function isUnsafePlayerSource(node, inputName) {
+    const src = getLinkedSourceNode(node, inputName);
+    return !!(src && (src.type === "player/getByName" || src.type === "convert/strToPlayer"));
+}
+
+// 生成玩家动作代码。
+// 当玩家来源不可信（unsafe=true，可能返回 null）时，自动将动作代码包裹在
+// `Player __p = <expr>; if (__p != null) { ... }` 中，避免空指针崩服。
+// 使用独立代码块 `{ ... }` 提供作用域，防止同一方法内连续多个节点声明同名 __p 导致编译冲突。
+// body 回调接收两个参数：实际使用的玩家变量名，以及动作代码应有的缩进。
+function emitPlayerAction(lines, indent, playerExpr, unsafe, body) {
+    if (unsafe) {
+        lines.push(`${indent}{`);
+        lines.push(`${indent}    Player __p = ${playerExpr};`);
+        lines.push(`${indent}    if (__p != null) {`);
+        body("__p", indent + "        ");
+        lines.push(`${indent}    }`);
+        lines.push(`${indent}}`);
+    } else {
+        body(playerExpr, indent);
+    }
+}
+
 // 布尔值解析（用于条件节点）
 function resolveBoolean(node, inputName, fallback) {
     const src = getLinkedSourceNode(node, inputName);
@@ -310,6 +336,9 @@ function traverseExec(startNode, indent, imports) {
 
         const i = indent;
         const p = resolvePlayerInput(cur, "玩家");
+        // 玩家输入是否来自可能返回 null 的来源（player/getByName、convert/strToPlayer）
+        const unsafePlayer = isUnsafePlayerSource(cur, "玩家");
+        if (unsafePlayer) imports.add("import org.bukkit.entity.Player;");
 
         switch (cur.type) {
 
@@ -322,104 +351,138 @@ function traverseExec(startNode, indent, imports) {
                 lines.push(`${i}Bukkit.broadcastMessage(${resolveString(cur, "消息", '"Hello"')});`);
                 break;
             case "actions/sendMessage":
-                lines.push(`${i}${p}.sendMessage(${resolveString(cur, "消息", '"Hello"')});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.sendMessage(${resolveString(cur, "消息", '"Hello"')});`);
+                });
                 break;
             case "actions/sendTitle": {
                 const title = resolveString(cur, "标题", '"标题"');
                 const subtitle = resolveString(cur, "副标题", '"副标题"');
-                lines.push(`${i}${p}.sendTitle(${title}, ${subtitle}, 10, 70, 20);`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.sendTitle(${title}, ${subtitle}, 10, 70, 20);`);
+                });
                 break;
             }
             case "actions/sendActionBar":
                 imports.add("import net.md_5.bungee.api.ChatMessageType;");
                 imports.add("import net.md_5.bungee.api.chat.TextComponent;");
-                lines.push(`${i}${p}.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(${resolveString(cur, "消息", '"动作栏"')}));`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(${resolveString(cur, "消息", '"动作栏"')}));`);
+                });
                 break;
 
             //  玩家操控 
             case "player/kick":
-                lines.push(`${i}${p}.kickPlayer(${resolveString(cur, "原因", '"你被踢出了服务器"')});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.kickPlayer(${resolveString(cur, "原因", '"你被踢出了服务器"')});`);
+                });
                 break;
             case "player/giveExp":
-                lines.push(`${i}${p}.giveExp(${resolveNumber(cur, "经验值", 100)});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.giveExp(${resolveNumber(cur, "经验值", 100)});`);
+                });
                 break;
             case "player/giveItem": {
                 const mat = resolveString(cur, "物品类型", '"DIAMOND"');
                 const qty = resolveNumber(cur, "数量", 1);
                 imports.add("import org.bukkit.Material;");
                 imports.add("import org.bukkit.inventory.ItemStack;");
-                lines.push(`${i}${p}.getInventory().addItem(new ItemStack(Material.valueOf(${mat}.toUpperCase()), ${qty}));`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.getInventory().addItem(new ItemStack(Material.valueOf(${mat}.toUpperCase()), ${qty}));`);
+                });
                 break;
             }
             case "player/setHealth":
-                lines.push(`${i}${p}.setHealth(${resolveNumber(cur, "血量值", 20)});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.setHealth(${resolveNumber(cur, "血量值", 20)});`);
+                });
                 break;
             case "player/setFoodLevel":
-                lines.push(`${i}${p}.setFoodLevel(${resolveNumber(cur, "饱食度", 20)});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.setFoodLevel(${resolveNumber(cur, "饱食度", 20)});`);
+                });
                 break;
             case "player/teleport": {
                 const target = resolvePlayerInput(cur, "目标玩家");
-                lines.push(`${i}${p}.teleport(${target}.getLocation());`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.teleport(${target}.getLocation());`);
+                });
                 break;
             }
             case "player/setGameMode": {
                 const gm = cur.properties["游戏模式"] || "SURVIVAL";
                 imports.add("import org.bukkit.GameMode;");
-                lines.push(`${i}${p}.setGameMode(GameMode.${gm});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.setGameMode(GameMode.${gm});`);
+                });
                 break;
             }
             case "player/setFlying": {
                 const fly = cur.properties["允许飞行"] !== false ? "true" : "false";
-                lines.push(`${i}${p}.setAllowFlight(${fly});`);
-                if (fly === "true") lines.push(`${i}${p}.setFlying(true);`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.setAllowFlight(${fly});`);
+                    if (fly === "true") lines.push(`${i2}${pVar}.setFlying(true);`);
+                });
                 break;
             }
             case "player/clearInventory":
-                lines.push(`${i}${p}.getInventory().clear();`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.getInventory().clear();`);
+                });
                 break;
             case "player/removeItem": {
                 imports.add("import org.bukkit.Material;");
                 imports.add("import org.bukkit.inventory.ItemStack;");
                 const mat2 = resolveString(cur, "物品类型", '"DIAMOND"');
                 const qty2 = resolveNumber(cur, "数量", 1);
-                lines.push(`${i}${p}.getInventory().removeItem(new ItemStack(Material.valueOf(${mat2}.toUpperCase()), ${qty2}));`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.getInventory().removeItem(new ItemStack(Material.valueOf(${mat2}.toUpperCase()), ${qty2}));`);
+                });
                 break;
             }
             case "player/setLevel":
-                lines.push(`${i}${p}.setLevel(${resolveNumber(cur, "等级", 1)});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.setLevel(${resolveNumber(cur, "等级", 1)});`);
+                });
                 break;
             case "player/setMaxHealth":
                 imports.add("import org.bukkit.attribute.Attribute;");
-                lines.push(`${i}${p}.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(${resolveNumber(cur, "最大血量", 20)});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(${resolveNumber(cur, "最大血量", 20)});`);
+                });
                 break;
             case "player/teleportToCoords": {
                 imports.add("import org.bukkit.Location;");
                 const locSrc = getLinkedSourceNode(cur, "位置");
-                if (foliaModeEnabled) {
-                    // Folia：使用异步传送（teleportAsync），可跨区域
-                    if (locSrc) {
-                        const locExpr = resolveLocation(cur, "位置");
-                        lines.push(`${i}${p}.teleportAsync(${locExpr});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    if (foliaModeEnabled) {
+                        // Folia：使用异步传送（teleportAsync），可跨区域
+                        if (locSrc) {
+                            const locExpr = resolveLocation(cur, "位置");
+                            lines.push(`${i2}${pVar}.teleportAsync(${locExpr});`);
+                        } else {
+                            const worldExpr = resolveString(cur, "世界", '"world"');
+                            lines.push(`${i2}${pVar}.teleportAsync(new Location(${pVar}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
+                        }
                     } else {
-                        const worldExpr = resolveString(cur, "世界", '"world"');
-                        lines.push(`${i}${p}.teleportAsync(new Location(${p}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
+                        if (locSrc) {
+                            const locExpr = resolveLocation(cur, "位置");
+                            lines.push(`${i2}${pVar}.teleport(${locExpr});`);
+                        } else {
+                            const worldExpr = resolveString(cur, "世界", '"world"');
+                            lines.push(`${i2}${pVar}.teleport(new Location(${pVar}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
+                        }
                     }
-                } else {
-                    if (locSrc) {
-                        const locExpr = resolveLocation(cur, "位置");
-                        lines.push(`${i}${p}.teleport(${locExpr});`);
-                    } else {
-                        const worldExpr = resolveString(cur, "世界", '"world"');
-                        lines.push(`${i}${p}.teleport(new Location(${p}.getServer().getWorld(${worldExpr}), 0, 64, 0));`);
-                    }
-                }
+                });
                 break;
             }
             case "player/playParticle": {
                 imports.add("import org.bukkit.Particle;");
                 const pt = resolveString(cur, "粒子类型", '"FLAME"');
                 const pqty = resolveNumber(cur, "数量", 10);
-                lines.push(`${i}${p}.getWorld().spawnParticle(Particle.valueOf(${pt}.toUpperCase()), ${p}.getLocation(), ${pqty});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.getWorld().spawnParticle(Particle.valueOf(${pt}.toUpperCase()), ${pVar}.getLocation(), ${pqty});`);
+                });
                 break;
             }
             case "player/playSound": {
@@ -427,7 +490,9 @@ function traverseExec(startNode, indent, imports) {
                 const sound = resolveString(cur, "音效", '"ENTITY_EXPERIENCE_ORB_PICKUP"');
                 const vol = resolveNumber(cur, "音量", 1.0);
                 const pitch = resolveNumber(cur, "音调", 1.0);
-                lines.push(`${i}${p}.playSound(${p}.getLocation(), Sound.valueOf(${sound}.toUpperCase()), ${vol}f, ${pitch}f);`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.playSound(${pVar}.getLocation(), Sound.valueOf(${sound}.toUpperCase()), ${vol}f, ${pitch}f);`);
+                });
                 break;
             }
 
@@ -614,7 +679,9 @@ function traverseExec(startNode, indent, imports) {
 
             //  指令节点 
             case "command/sendUsage":
-                lines.push(`${i}${p}.sendMessage(${resolveString(cur, "用法", '"用法：/" + label + " <参数>"')});`);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}${pVar}.sendMessage(${resolveString(cur, "用法", '"用法：/" + label + " <参数>"')});`);
+                });
                 break;
             case "command/checkPermission": {
                 const perm = resolveString(cur, "权限节点", '"myplugin.use"');
@@ -1204,11 +1271,14 @@ function generateConfigYml() {
     if (!editors.cfg) return;
     let yml = "# 插件默认配置文件\n";
 
-    const keys = new Set();
+    // 收集节点图中引用的配置键（用 Map 按 key 字符串去重，Set 存对象无法去重）
+    const keys = new Map();
     if (litegraphGraph) {
         ["config/getString", "config/getInt"].forEach(t => {
             litegraphGraph.findNodesByType(t).forEach(n => {
-                if (n.properties["键"]) keys.add({ key: n.properties["键"], type: t === "config/getInt" ? "int" : "string" });
+                if (n.properties["键"]) {
+                    keys.set(n.properties["键"], { key: n.properties["键"], type: t === "config/getInt" ? "int" : "string" });
+                }
             });
         });
     }
@@ -1389,6 +1459,8 @@ ${depsBlock}
 // 重新生成全部输出文件（Java / plugin.yml / config.yml / pom.xml）
 function regenerateAll() {
     if (!litegraphGraph) return;
+    // 代码锁定时不覆盖编辑器内容，保护用户手动修改
+    if (_codeLocked) return;
     generateJava();
     generatePluginYml();
     generateConfigYml();

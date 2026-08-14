@@ -110,11 +110,43 @@ function initLiteGraph() {
 
     graph.start();
 
+    // 保存当前图状态到撤销栈
+    function pushUndoState() {
+        if (_isUndoing) return;
+        const snapshot = JSON.stringify(graph.serialize());
+        _undoStack.push(snapshot);
+        if (_undoStack.length > _MAX_UNDO) _undoStack.shift();
+        _redoStack = []; // 新操作清空重做栈
+    }
+
+    function undoGraph() {
+        if (_undoStack.length === 0) return;
+        const current = JSON.stringify(graph.serialize());
+        const prev = _undoStack.pop();
+        _redoStack.push(current);
+        _isUndoing = true;
+        graph.configure(JSON.parse(prev));
+        _isUndoing = false;
+        regen();
+    }
+
+    function redoGraph() {
+        if (_redoStack.length === 0) return;
+        const current = JSON.stringify(graph.serialize());
+        const next = _redoStack.pop();
+        _undoStack.push(current);
+        _isUndoing = true;
+        graph.configure(JSON.parse(next));
+        _isUndoing = false;
+        regen();
+    }
+
     // 节点变化时延迟重新生成代码
     const regen = () => setTimeout(regenerateAll, 80);
-    graph.onNodeAdded        = regen;
-    graph.onNodeRemoved      = regen;
-    graph.onConnectionChange = regen;
+    const saveAndRegen = () => { pushUndoState(); regen(); };
+    graph.onNodeAdded        = saveAndRegen;
+    graph.onNodeRemoved      = saveAndRegen;
+    graph.onConnectionChange = saveAndRegen;
 
     // 拖拽放置节点到画布
     const blocklyDiv = document.getElementById('blocklyDiv');
@@ -143,4 +175,16 @@ function initLiteGraph() {
         graph.add(node);
         regenerateAll();
     }, 200);
+
+    // 绑定撤销/重做快捷键
+    document.addEventListener('keydown', function(e) {
+        const isCtrl = e.ctrlKey || e.metaKey;
+        if (isCtrl && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+            e.preventDefault();
+            undoGraph();
+        } else if (isCtrl && ((e.key === 'y' || e.key === 'Y') || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
+            e.preventDefault();
+            redoGraph();
+        }
+    });
 }

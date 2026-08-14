@@ -237,13 +237,13 @@ func getMavenCommand() string {
 
 // 常见 JDK 安装位置候选（Windows 优先，可自行扩展）
 var javaCandidates = []string{
-	`F:\zulu26`,
-	`C:\Program Files\Java\latest`,
+	`C:\Program Files\Java`,
 	`C:\Program Files\Eclipse Adoptium`,
-	`C:\Program Files\Microsoft`,
+	`C:\Program Files\Microsoft\jdk-*`,
 	`C:\Program Files\Zulu`,
 	`C:\Program Files\Amazon Corretto`,
-	`F:\zulu17`,
+	`C:\Program Files\BellSoft\Liberica`,
+	`C:\Program Files\Semeru`,
 }
 
 // 启动时确保 Java 记录可用：读取记录 → 验证每个路径是否存在 →
@@ -604,15 +604,18 @@ func addJavaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	abs, _ := filepath.Abs(p)
-	// 去重
-	for _, jh := range javaHomesCache {
+	// 去重：如果路径已存在则更新版本，不清空其他条目
+	found := false
+	for i, jh := range javaHomesCache {
 		if strings.EqualFold(jh.Path, abs) {
-			// 已存在，更新版本
-			javaHomesCache = []JavaHomeInfo{}
+			javaHomesCache[i].Version = ver
+			found = true
 			break
 		}
 	}
-	javaHomesCache = append(javaHomesCache, JavaHomeInfo{Path: abs, Version: ver})
+	if !found {
+		javaHomesCache = append(javaHomesCache, JavaHomeInfo{Path: abs, Version: ver})
+	}
 	// 按版本排序
 	sortJavaHomes()
 	saveJavaHomes()

@@ -761,6 +761,7 @@ function registerAllNodes() {
     StringConcatNode.title = "字符串拼接";
     StringConcatNode.prototype.color = C.lgcFg;
     StringConcatNode.prototype.bgcolor = C.lgcBg;
+    applyOnConfigure(StringConcatNode);
     LiteGraph.registerNodeType("logic/strConcat", StringConcatNode);
 
     defNode("logic/cancelEvent", "取消事件", function () {
@@ -908,6 +909,7 @@ function registerAllNodes() {
     PlayerNameNode.title = "玩家名字";
     PlayerNameNode.prototype.color = C.plrFg;
     PlayerNameNode.prototype.bgcolor = C.plrBg;
+    applyOnConfigure(PlayerNameNode);
     LiteGraph.registerNodeType("values/playerName", PlayerNameNode);
 
     // 获取参数项节点
@@ -946,6 +948,7 @@ function registerAllNodes() {
     GetPlayerByNameNode.title = "根据名字获取玩家";
     GetPlayerByNameNode.prototype.color = C.plrFg;
     GetPlayerByNameNode.prototype.bgcolor = C.plrBg;
+    applyOnConfigure(GetPlayerByNameNode);
     LiteGraph.registerNodeType("player/getByName", GetPlayerByNameNode);
 
     // 字符串转数字节点
@@ -958,6 +961,7 @@ function registerAllNodes() {
     StringToNumberNode.title = "字符串转数字";
     StringToNumberNode.prototype.color = C.datFg;
     StringToNumberNode.prototype.bgcolor = C.datBg;
+    applyOnConfigure(StringToNumberNode);
     LiteGraph.registerNodeType("convert/stringToNumber", StringToNumberNode);
 
     function GetArgCountNode() {
@@ -968,6 +972,7 @@ function registerAllNodes() {
     GetArgCountNode.title = "参数个数";
     GetArgCountNode.prototype.color = C.cmdFg;
     GetArgCountNode.prototype.bgcolor = C.cmdBg;
+    applyOnConfigure(GetArgCountNode);
     LiteGraph.registerNodeType("command/argCount", GetArgCountNode);
 
     //  变量存储 
