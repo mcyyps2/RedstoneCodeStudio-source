@@ -224,6 +224,19 @@
             color: #5a6282;
         }
 
+        /* 屏幕阅读器专用类 */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
         .panel-section-body {
             overflow: visible;
             max-height: none;
@@ -1195,24 +1208,30 @@
 
             <div id="view-logic" class="view-section active" style="flex:1;">
 
-                <div id="node-panel">
+                <div id="node-panel" 
+                    role="navigation" 
+                    aria-label="节点面板" 
+                    aria-labelledby="node-search-label">
 
                     <div
                         style="padding:10px 10px 6px; position:sticky; top:0; background:#1c1f2b; z-index:5; border-bottom:1px solid #232737;">
+                        <label id="node-search-label" for="node-search" class="sr-only">搜索节点</label>
                         <input id="node-search" type="text" placeholder="搜索节点…" oninput="filterNodes(this.value)"
-                            style="width:100%; background:#13161f; border:1px solid #2e3347; border-radius:7px; padding:6px 10px; font-size:11px; color:#c8cde0; outline:none;">
+                            aria-label="搜索节点" style="width:100%; background:#13161f; border:1px solid #2e3347; border-radius:7px; padding:6px 10px; font-size:11px; color:#c8cde0; outline:none;">
                     </div>
 
 
-                    <details open>
-                        <summary class="panel-section-title">
+                    <details open aria-expanded="true" role="group" aria-label="生命周期节点">
+                        <summary class="panel-section-title" role="button" tabindex="0" aria-expanded="true">
                             <span>生命周期</span>
                             <span class="section-arrow">▶</span>
                         </summary>
                         <div class="panel-section-body">
-                            <div class="node-item ev" draggable="true" data-node="events/onEnable">插件启用 <span
+                            <div class="node-item ev" draggable="true" data-node="events/onEnable" role="button" 
+                                tabindex="0" aria-label="插件启用 - 事件" draggable="true">插件启用 <span
                                     class="node-type-badge">事件</span></div>
-                            <div class="node-item ev" draggable="true" data-node="events/onDisable">插件卸载 <span
+                            <div class="node-item ev" draggable="true" data-node="events/onDisable" role="button" 
+                                tabindex="0" aria-label="插件卸载 - 事件" draggable="true">插件卸载 <span
                                     class="node-type-badge">事件</span></div>
                         </div>
                     </details>
@@ -1258,6 +1277,16 @@
                             <div class="node-item ev" draggable="true" data-node="events/playerSneak">切换潜行 <span
                                     class="node-type-badge">事件</span></div>
                             <div class="node-item ev" draggable="true" data-node="events/playerSprint">切换疾跑 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/playerCommand">玩家执行指令 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/projectileHit">投掷物命中 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/entityDeath">实体死亡 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/foodLevelChange">饱食度变化 <span
+                                    class="node-type-badge">事件</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/portalCreate">传送门创建 <span
                                     class="node-type-badge">事件</span></div>
                         </div>
                     </details>
@@ -1550,11 +1579,76 @@
                         </div>
                     </details>
 
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>GUI</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body" style="padding-bottom:10px;">
+                            <div class="node-item" draggable="true" data-node="gui/openChest">打开箱子GUI <span
+                                    class="node-type-badge">GUI</span></div>
+                            <div class="node-item" draggable="true" data-node="gui/setSlot">设置GUI槽位 <span
+                                    class="node-type-badge">GUI</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/inventoryClick">GUI点击事件 <span
+                                    class="node-type-badge">GUI</span></div>
+                            <div class="node-item ev" draggable="true" data-node="events/inventoryClose">GUI关闭事件 <span
+                                    class="node-type-badge">GUI</span></div>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>Vault 经济</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body" style="padding-bottom:10px;">
+                            <div class="node-item" draggable="true" data-node="vault/getBalance">获取余额 <span
+                                    class="node-type-badge">Vault</span></div>
+                            <div class="node-item" draggable="true" data-node="vault/withdraw">扣除金币 <span
+                                    class="node-type-badge">Vault</span></div>
+                            <div class="node-item" draggable="true" data-node="vault/deposit">给予金币 <span
+                                    class="node-type-badge">Vault</span></div>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>物品</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body" style="padding-bottom:10px;">
+                            <div class="node-item" draggable="true" data-node="item/createBuilder">创建物品 <span
+                                    class="node-type-badge">物品</span></div>
+                            <div class="node-item" draggable="true" data-node="item/setDisplayName">设置物品名 <span
+                                    class="node-type-badge">物品</span></div>
+                            <div class="node-item" draggable="true" data-node="item/addEnchant">添加附魔 <span
+                                    class="node-type-badge">物品</span></div>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary class="panel-section-title">
+                            <span>计分板</span>
+                            <span class="section-arrow">▶</span>
+                        </summary>
+                        <div class="panel-section-body" style="padding-bottom:10px;">
+                            <div class="node-item" draggable="true" data-node="scoreboard/setObjective">设置计分板目标 <span
+                                    class="node-type-badge">计分板</span></div>
+                            <div class="node-item" draggable="true" data-node="scoreboard/setScore">设置分数 <span
+                                    class="node-type-badge">计分板</span></div>
+                        </div>
+                    </details>
+
                 </div>
 
 
-                <div id="blocklyDiv">
-                    <div id="canvas-hint">右键画布添加节点 · 从左侧面板拖入节点 · 拖拽连线构建逻辑</div>
+                <div id="blocklyDiv" 
+                    role="application" 
+                    aria-label="可视化编程画布" 
+                    aria-describedby="canvas-hint"
+                    tabindex="0"
+                    aria-describedby="canvas-hint">
+                    <div id="canvas-hint" aria-hidden="true">右键画布添加节点 · 从左侧面板拖入节点 · 拖拽连线构建逻辑</div>
                 </div>
             </div>
 
@@ -1740,7 +1834,10 @@
                         <div id="editor-cfg" style="width:100%;height:100%;"></div>
                     </div>
                     <div class="src-editor-pane" id="pane-pom">
-                        <div id="editor-pom" style="width:100%;height:100%;"></div>
+                        <div style="background:#fff3cd;color:#856404;padding:8px 12px;border-bottom:1px solid #ffeaa7;font-size:12px;">
+                            ⚠️ <b>安全警告</b>：请勿修改 &lt;repositories&gt;、&lt;dependencies&gt; 中的核心依赖版本，否则可能导致安全风险或编译失败。仅建议在 &lt;dependencies&gt; 中添加可信依赖。
+                        </div>
+                        <div id="editor-pom" style="width:100%;height:calc(100% - 40px);"></div>
                     </div>
                 </div>
             </div>

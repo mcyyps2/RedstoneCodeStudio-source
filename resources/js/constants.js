@@ -35,6 +35,14 @@ const C = {
     varBg: "#1a0a2a", varFg: "#8a30c0",
     // 类型转换
     cvtBg: "#081828", cvtFg: "#1a7ab0",
+    // GUI/物品栏
+    guiBg: "#5b2c6f", guiFg: "#9b59b6",
+    // Vault 经济
+    vltBg: "#7d6608", vltFg: "#f39c12",
+    // 物品 Meta
+    itmBg: "#92266a", itmFg: "#e67e22",
+    // 计分板
+    scbBg: "#186a3b", scbFg: "#2ecc71",
 };
 
 // 撤销/重做历史栈

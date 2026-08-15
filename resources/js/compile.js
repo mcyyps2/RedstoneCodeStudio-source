@@ -1,3 +1,59 @@
+// 解析 Maven 编译错误，提取关键信息并友好化显示
+function parseMavenError(errorMsg) {
+    if (!errorMsg) return { title: '编译失败', message: '未知错误' };
+
+    // 提取所有 [ERROR] 行
+    const errorLines = errorMsg.split('\n').filter(line => line.includes('[ERROR]'));
+
+    // 优先检测依赖错误
+    if (errorMsg.includes('Could not resolve dependencies') ||
+        errorMsg.includes('Could not find artifact') ||
+        errorMsg.includes('Cannot resolve')) {
+        const depMatch = errorMsg.match(/Could not find artifact\s+([\w.:-]+)/) ||
+                         errorMsg.match(/Cannot resolve\s+([\w.:]+)/);
+        return {
+            title: '依赖下载失败',
+            message: depMatch ? `无法下载依赖: ${depMatch[1]}\n\n建议：检查网络连接或开启加速器重试` : '依赖解析失败，请检查网络连接或 pom.xml 配置'
+        };
+    }
+
+    // 检测编译错误
+    const compileErrorPattern = /\[ERROR\]\s+(.+\.java):\[([0-9]+),[0-9]+\]\s+(.+)/;
+    const compileMatch = errorLines.find(line => compileErrorPattern.test(line));
+
+    if (compileMatch) {
+        const match = compileError.match(compileErrorPattern);
+        const filePath = match[1].split('/').pop(); // 只显示文件名
+        const lineNum = match[2];
+        const errMsg = match[3];
+        return {
+            title: '编译错误',
+            message: `文件: ${filePath}\n行号: ${lineNum}\n错误: ${errMsg}\n\n请检查节点逻辑是否正确，或查看完整错误日志了解详情。`
+        };
+    }
+
+    // 提取第一个有意义的错误消息
+    const firstError = errorLines.find(line => {
+        const msg = line.replace(/\[ERROR\]\s*/, '');
+        return msg && !msg.startsWith('---') && !msg.startsWith('Failed to execute') && msg.length > 10;
+    });
+
+    if (firstError) {
+        const msg = firstError.replace(/\[ERROR\]\s*/, '');
+        // 限制长度，避免显示过多内容
+        return {
+            title: '编译失败',
+            message: msg.length > 200 ? msg.substring(0, 200) + '...' : msg
+        };
+    }
+
+    // 默认回退
+    return {
+        title: '编译失败',
+        message: errorMsg.length > 300 ? errorMsg.substring(0, 300) + '...' : errorMsg
+    };
+}
+
 function compilePlugin() {
     const btn = document.getElementById('compileBtn');
 
@@ -84,7 +140,8 @@ function compilePlugin() {
         } else {
             const d = await res.json().catch(() => ({}));
             showStatus("编译失败");
-            showModalDialog("编译失败", d.error || '未知错误', "error");
+            const parsed = parseMavenError(d.error);
+            showModalDialog(parsed.title, parsed.message, "error");
         }
     })
     .catch(err => {

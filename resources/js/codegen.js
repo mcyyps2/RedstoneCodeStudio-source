@@ -3,6 +3,9 @@
 // 全局 Folia 兼容模式开关（由 generateJava 根据 UI 开关设置）
 let foliaModeEnabled = false;
 
+// 全局玩家变量名上下文（用于 forEachPlayer 等循环节点动态替换变量名）
+let __currentPlayerVar = "player";
+
 // 判断当前是否处于 Folia 兼容模式
 function isFoliaMode() {
     return foliaModeEnabled;
@@ -101,6 +104,18 @@ function resolveString(node, inputName, fallback) {
     if (src.type === "events/playerDamaged" || src.type === "events/entityDamageByPlayer")
         return "String.valueOf(event.getDamage())";
 
+    // 新增事件节点字符串输出
+    if (src.type === "events/playerCommand")
+        return "event.getMessage()";
+    if (src.type === "events/inventoryClick")
+        return "event.getCurrentItem() != null ? event.getCurrentItem().getType().toString() : \"AIR\"";
+    if (src.type === "events/projectileHit")
+        return "event.getHitEntity() != null ? event.getHitEntity().getType().toString() : \"BLOCK\"";
+    if (src.type === "events/entityDeath")
+        return "event.getEntity().getType().toString()";
+    if (src.type === "events/foodLevelChange")
+        return "String.valueOf(event.getFoodLevel())";
+
     // 指令节点字符串输出
     if (src.type === "command/onCommand") {
         return "String.join(\" \", args)";
@@ -139,14 +154,24 @@ function resolveString(node, inputName, fallback) {
         return `${resolvePlayerInput(src, "玩家")}.getInventory().getItemInMainHand().getType().name()`;
     }
 
-        // 网络工具节点
+        // 网络工具节点（使用 Gson 构建JSON，自动处理转义）
     if (src.type === "network/buildJsonObject") {
+        imports.add("import com.google.gson.Gson;");
+        imports.add("import com.google.gson.JsonObject;");
         const k1 = resolveString(src, "键1", '"key1"');
         const v1 = resolveString(src, "值1", '"val1"');
         const k2 = resolveString(src, "键2", '"key2"');
         const v2 = resolveString(src, "值2", '"val2"');
-        return `("{\"" + ${k1} + "\":\"" + ${v1} + "\",\"" + ${k2} + "\":\"" + ${v2} + "\"}")`;
+        return `__buildJson(${k1}, ${v1}, ${k2}, ${v2})`;
     }
+
+    // 新增事件节点字符串输出
+    if (src.type === "events/playerCommand")
+        return "event.getMessage()";
+    if (src.type === "events/projectileHit")
+        return "event.getEntity().getType().toString()";
+    if (src.type === "events/entityDeath")
+        return "event.getEntity().getType().toString()";
 
     // 默认回退
     return fallback !== undefined ? fallback : '"Hello"';
@@ -193,11 +218,19 @@ function resolveNumber(node, inputName, fallback) {
         return "event.getNewLevel()";
     if (src.type === "events/playerDamaged" || src.type === "events/entityDamageByPlayer")
         return "event.getDamage()";
+    if (src.type === "events/foodLevelChange")
+        return "event.getFoodLevel()";
+    if (src.type === "events/inventoryClick")
+        return "event.getSlot()";
+    if (src.type === "vault/getBalance") {
+        const plrExpr = resolvePlayerInput(src, "玩家");
+        return `__economy().getBalance(${plrExpr})`;
+    }
 
-    // 字符串转数字
+    // 字符串转数字（使用工具方法，避免异常）
     if (src.type === "convert/stringToNumber") {
         const strExpr = resolveString(src, "字符串", '"0"');
-        return `Integer.parseInt(${strExpr})`;
+        return `__parseDouble(${strExpr})`;
     }
 
     // 变量节点
@@ -214,17 +247,30 @@ function resolveNumber(node, inputName, fallback) {
         return `Math.abs(${resolveNumber(src, "数值", "0")})`;
     }
 
+    // Vault 余额
+    if (src.type === "vault/getBalance") {
+        const plrSrc = getLinkedSourceNode(src, "玩家");
+        const pExpr = resolvePlayer(plrSrc);
+        return `(Bukkit.getPluginManager().getPlugin("Vault") != null ? Bukkit.getServicesManager().getRegistration(net.milkbowl.vault.economy.Economy.class).getProvider().getBalance(${pExpr}) : 0)`;
+    }
+
+    // 新增事件节点数字输出
+    if (src.type === "events/foodLevelChange")
+        return "event.getFoodLevel()";
+    if (src.type === "events/inventoryClick")
+        return "event.getSlot()";
+
     return fallback !== undefined ? String(fallback) : "100";
 }
 
 function resolvePlayer(node) {
-    if (!node) return "player";
+    if (!node) return __currentPlayerVar;
 
     if (node.type.startsWith("events/")) {
-        return "player";
+        return __currentPlayerVar;
     }
     if (node.type === "command/onCommand") {
-        return "player";
+        return __currentPlayerVar;
     }
     // 根据名字获取玩家节点
     if (node.type === "player/getByName") {
@@ -233,11 +279,11 @@ function resolvePlayer(node) {
         // 生成的代码虽然符合 Java 格式，但它基本属于裸奔:(
         // 如果玩家不在线，生成的代码会因为 Null 值直接导致服务器异常。
         // TODO：
-        // 目前 resolvePlayer 只能处理变量名，需要把它从“返回字符串”重构为“返回逻辑块”，
+        // 目前 resolvePlayer 只能处理变量名，需要把它从"返回字符串"重构为"返回逻辑块"，
         // 这样生成的代码才能自动带上安全检查
         // 但这会涉及到大量的代码重构，懒得折腾了，先放着吧，反正大多数时候玩家都是在线的(*/ω＼*)
     }
-    return "player";
+    return __currentPlayerVar;
 }
 
 // 从节点的玩家输入端口追溯并返回对应的 Java 玩家变量名或表达式
@@ -261,7 +307,7 @@ function resolvePlayerInput(node, inputName) {
     return resolvePlayer(src);
 }
 
-// 判断某个节点的玩家输入是否来自“按名获取玩家”或“字符串转玩家”这类不可信来源。
+// 判断某个节点的玩家输入是否来自"按名获取玩家"或"字符串转玩家"这类不可信来源。
 // 这类来源通过 Bukkit.getPlayer(name) 获取玩家，如果玩家不在线会返回 null，
 // 后续直接调用其方法会导致空指针异常（NPE）崩服，因此需要空指针保护。
 function isUnsafePlayerSource(node, inputName) {
@@ -322,6 +368,36 @@ function resolveLocation(node, inputName) {
     return "player.getLocation()";
 }
 
+// 解析物品(object)端口 → 返回一个 ItemStack Java 表达式（递归构建）
+function resolveItem(node, inputName) {
+    const src = getLinkedSourceNode(node, inputName);
+    if (!src) return null;
+    return buildItemExpr(src);
+}
+
+// 递归构建 ItemStack 表达式（createBuilder / setDisplayName / addEnchant 链）
+function buildItemExpr(src) {
+    if (src.type === "item/createBuilder") {
+        const mat = resolveString(src, "物品类型", '"DIAMOND"');
+        const qty = src.properties["数量"] != null ? src.properties["数量"] : 1;
+        return `new ItemStack(Material.valueOf(${mat}.toUpperCase()), ${qty})`;
+    }
+    if (src.type === "item/setDisplayName") {
+        const base = resolveItem(src, "物品");
+        const name = resolveString(src, "名称", '"自定义物品"');
+        if (!base) return null;
+        return `__setDisplayName(${base}, ${name})`;
+    }
+    if (src.type === "item/addEnchant") {
+        const base = resolveItem(src, "物品");
+        const ench = src.properties["附魔"] || "SHARPNESS";
+        const lvl = src.properties["等级"] != null ? src.properties["等级"] : 1;
+        if (!base) return null;
+        return `__addEnchant(${base}, Enchantment.${ench}, ${lvl})`;
+    }
+    return null;
+}
+
 // 执行流遍历 → Java 语句生成
 
 // 从起始节点沿执行流遍历，将每个节点翻译为 Java 代码行
@@ -329,6 +405,8 @@ function traverseExec(startNode, indent, imports) {
     const lines = [];
     let cur = startNode;
     const visited = new Set();
+    // 用于为 GUI 等节点生成唯一变量名的递增计数器
+    let lineIndex = 0;
 
     while (cur) {
         if (visited.has(cur.id)) break;
@@ -608,17 +686,22 @@ function traverseExec(startNode, indent, imports) {
                 imports.add("import org.bukkit.entity.Player;");
                 const perPlayerLines = [];
                 const perPlayerNode = findNextExec(cur, 1);
+                // 设置循环中的玩家变量名上下文
+                const prevPlayerVar = __currentPlayerVar;
+                __currentPlayerVar = "__loopPlayer";
                 if (perPlayerNode) traverseExecInto(perPlayerNode, indent + "    ", imports, perPlayerLines);
+                // 恢复玩家变量名上下文
+                __currentPlayerVar = prevPlayerVar;
                 if (foliaModeEnabled) {
                     // Folia：每个玩家在其所在区域调度执行
                     lines.push(`${i}for (Player __loopPlayer : Bukkit.getOnlinePlayers()) {`);
                     lines.push(`${i}    __loopPlayer.getScheduler().run(this, __t -> {`);
-                    perPlayerLines.forEach(l => lines.push(l.replace(/\bplayer\b/g, "__loopPlayer")));
+                    perPlayerLines.forEach(l => lines.push(l));
                     lines.push(`${i}    }, () -> {});`);
                     lines.push(`${i}}`);
                 } else {
                     lines.push(`${i}for (Player __loopPlayer : Bukkit.getOnlinePlayers()) {`);
-                    perPlayerLines.forEach(l => lines.push(l.replace(/\bplayer\b/g, "__loopPlayer")));
+                    perPlayerLines.forEach(l => lines.push(l));
                     lines.push(`${i}}`);
                 }
                 cur = findNextExec(cur, 0); continue;
@@ -949,6 +1032,85 @@ function traverseExec(startNode, indent, imports) {
                 }
                 cur = findNextExec(cur, 0); continue;
             }
+
+            // === GUI 节点 ===
+            case "gui/openChest": {
+                const size = parseInt(cur.properties["行数"] || "3");
+                const slots = size * 9;
+                const title = resolveString(cur, "标题", '"菜单"');
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}{`);
+                    lines.push(`${i2}    org.bukkit.inventory.Inventory __inv = org.bukkit.Bukkit.createInventory(null, ${slots}, ${title});`);
+                    lines.push(`${i2}    ${pVar}.openInventory(__inv);`);
+                    lines.push(`${i2}}`);
+                });
+                break;
+            }
+            case "gui/setSlot": {
+                const slot = cur.properties["槽位"] || 0;
+                const qty = cur.properties["数量"] || 1;
+                // 优先使用物品构建器链（object）解析出的 ItemStack
+                const itemExpr = resolveItem(cur, "物品");
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    if (itemExpr) {
+                        lines.push(`${i2}${pVar}.getInventory().setItem(${slot}, ${itemExpr});`);
+                    } else {
+                        const mat = resolveString(cur, "物品类型", '"DIAMOND"');
+                        lines.push(`${i2}${pVar}.getInventory().setItem(${slot}, new org.bukkit.inventory.ItemStack(org.bukkit.Material.valueOf(${mat}.toUpperCase()), ${qty}));`);
+                    }
+                });
+                break;
+            }
+
+            // === Vault 经济节点 ===
+            case "vault/withdraw": {
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    const amt = resolveNumber(cur, "金额", 100);
+                    lines.push(`${i2}if (__economy() != null) {`);
+                    lines.push(`${i2}    __economy().withdrawPlayer(${pVar}, ${amt});`);
+                    lines.push(`${i2}}`);
+                });
+                break;
+            }
+            case "vault/deposit": {
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    const amt = resolveNumber(cur, "金额", 100);
+                    lines.push(`${i2}if (__economy() != null) {`);
+                    lines.push(`${i2}    __economy().depositPlayer(${pVar}, ${amt});`);
+                    lines.push(`${i2}}`);
+                });
+                break;
+            }
+
+            // === 计分板节点 ===
+            case "scoreboard/setObjective": {
+                imports.add("import org.bukkit.Bukkit;");
+                imports.add("import org.bukkit.scoreboard.Scoreboard;");
+                imports.add("import org.bukkit.scoreboard.Objective;");
+                imports.add("import org.bukkit.scoreboard.DisplaySlot;");
+                const objName = resolveString(cur, "标题", '"scoreboard"');
+                const dispName = cur.properties["显示名称"] || "分数";
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}org.bukkit.scoreboard.Scoreboard __sb = Bukkit.getScoreboardManager().getNewScoreboard();`);
+                    lines.push(`${i2}org.bukkit.scoreboard.Objective __obj = __sb.registerNewObjective("sbobj", "dummy", ${dispName});`);
+                    lines.push(`${i2}__obj.setDisplaySlot(org.bukkit.scoreboard.DisplaySlot.SIDEBAR);`);
+                    lines.push(`${i2}${pVar}.setScoreboard(__sb);`);
+                });
+                break;
+            }
+            case "scoreboard/setScore": {
+                const entry = resolveString(cur, "条目", '"Player"');
+                const score = resolveNumber(cur, "分数", 0);
+                emitPlayerAction(lines, i, p, unsafePlayer, (pVar, i2) => {
+                    lines.push(`${i2}org.bukkit.scoreboard.Scoreboard __sb = ${pVar}.getScoreboard();`);
+                    lines.push(`${i2}if (__sb != null) {`);
+                    lines.push(`${i2}    org.bukkit.scoreboard.Objective __obj = __sb.getObjective("sbobj");`);
+                    lines.push(`${i2}    if (__obj != null) __obj.getScore(${entry}).setScore(${score});`);
+                    lines.push(`${i2}}`);
+                });
+                break;
+            }
+
         }
 
         if (cur === null) break;
@@ -1012,6 +1174,13 @@ function generateJava() {
         { nodeType: "events/playerLevelUp", method: "onPlayerLevelUp", event: "PlayerLevelChangeEvent", pkg: "org.bukkit.event.player.PlayerLevelChangeEvent", playerGet: "event.getPlayer()" },
         { nodeType: "events/playerSneak", method: "onPlayerSneak", event: "PlayerToggleSneakEvent", pkg: "org.bukkit.event.player.PlayerToggleSneakEvent", playerGet: "event.getPlayer()" },
         { nodeType: "events/playerSprint", method: "onPlayerSprint", event: "PlayerToggleSprintEvent", pkg: "org.bukkit.event.player.PlayerToggleSprintEvent", playerGet: "event.getPlayer()" },
+        { nodeType: "events/inventoryClick", method: "onInventoryClick", event: "InventoryClickEvent", pkg: "org.bukkit.event.inventory.InventoryClickEvent", playerGet: "event.getWhoClicked()", extraGuard: "if (!(event.getWhoClicked() instanceof Player)) return;" },
+        { nodeType: "events/inventoryClose", method: "onInventoryClose", event: "InventoryCloseEvent", pkg: "org.bukkit.event.inventory.InventoryCloseEvent", playerGet: "event.getPlayer()" },
+        { nodeType: "events/playerCommand", method: "onPlayerCommand", event: "PlayerCommandPreprocessEvent", pkg: "org.bukkit.event.player.PlayerCommandPreprocessEvent", playerGet: "event.getPlayer()" },
+        { nodeType: "events/projectileHit", method: "onProjectileHit", event: "ProjectileHitEvent", pkg: "org.bukkit.event.entity.ProjectileHitEvent", playerGet: "(event.getEntity().getShooter() instanceof Player) ? (Player) event.getEntity().getShooter() : null", extraGuard: "if (!(event.getEntity().getShooter() instanceof Player)) return;" },
+        { nodeType: "events/entityDeath", method: "onEntityDeath", event: "EntityDeathEvent", pkg: "org.bukkit.event.entity.EntityDeathEvent", playerGet: "(event.getEntity() instanceof Player) ? (Player) event.getEntity() : null", extraGuard: "if (!(event.getEntity() instanceof Player)) return;" },
+        { nodeType: "events/foodLevelChange", method: "onFoodLevelChange", event: "FoodLevelChangeEvent", pkg: "org.bukkit.event.entity.FoodLevelChangeEvent", playerGet: "(event.getEntity() instanceof Player) ? (Player) event.getEntity() : null", extraGuard: "if (!(event.getEntity() instanceof Player)) return;" },
+        { nodeType: "events/portalCreate", method: "onPortalCreate", event: "PortalCreateEvent", pkg: "org.bukkit.event.world.PortalCreateEvent", playerGet: "null" },
     ];
 
     for (const def of eventDefs) {
@@ -1140,29 +1309,38 @@ function generateJava() {
         classLines.push("");
     }
 
-    // HTTP 工具方法
+    // HTTP 工具方法（使用 Gson 正确解析嵌套对象/数组/转义字符）
     const hasHttp = graph.findNodesByType("network/httpGet").length > 0 ||
         graph.findNodesByType("network/httpPost").length > 0;
     if (hasHttp) {
+        imports.add("import com.google.gson.Gson;");
+        imports.add("import com.google.gson.JsonObject;");
+        imports.add("import com.google.gson.JsonParser;");
         classLines.push("");
-        classLines.push("    // HTTP JSON 解析工具方法");
+        classLines.push("    // HTTP JSON 解析工具方法（使用 Gson）");
         classLines.push("    private String __parseJson(String json, String key) {");
         classLines.push("        try {");
-        classLines.push(`            String search = "\\"" + key + "\\"";`);
-        classLines.push(`            int idx = json.indexOf(search + ":");`);
-        classLines.push(`            if (idx < 0) idx = json.indexOf(search + " :");`);
-        classLines.push(`            if (idx < 0) return "";`);
-        classLines.push(`            int start = json.indexOf(':', idx) + 1;`);
-        classLines.push(`            while (start < json.length() && json.charAt(start) == ' ') start++;`);
-        classLines.push(`            if (json.charAt(start) == '"') {`);
-        classLines.push(`                int end = json.indexOf('"', start + 1);`);
-        classLines.push(`                return json.substring(start + 1, end);`);
-        classLines.push(`            } else {`);
-        classLines.push(`                int end = json.indexOf(',', start);`);
-        classLines.push(`                if (end < 0) end = json.indexOf('}', start);`);
-        classLines.push(`                return json.substring(start, end).trim();`);
-        classLines.push(`            }`);
+        classLines.push("            JsonObject obj = JsonParser.parseString(json).getAsJsonObject();");
+        classLines.push("            if (obj.has(key)) {");
+        classLines.push("                return obj.get(key).getAsString();");
+        classLines.push("            }");
+        classLines.push("            return \"\";");
         classLines.push("        } catch (Exception e) { return \"\"; }");
+        classLines.push("    }");
+    }
+
+    // 构建 JSON 对象工具方法（使用 Gson 自动处理转义）
+    const hasBuildJson = graph.findNodesByType("network/buildJsonObject").length > 0;
+    if (hasBuildJson) {
+        imports.add("import com.google.gson.Gson;");
+        imports.add("import com.google.gson.JsonObject;");
+        classLines.push("");
+        classLines.push("    // 构建JSON对象工具方法");
+        classLines.push("    private String __buildJson(String k1, String v1, String k2, String v2) {");
+        classLines.push("        JsonObject obj = new JsonObject();");
+        classLines.push("        obj.addProperty(k1, v1);");
+        classLines.push("        obj.addProperty(k2, v2);");
+        classLines.push("        return obj.toString();");
         classLines.push("    }");
     }
 
@@ -1204,6 +1382,46 @@ function generateJava() {
         classLines.push("    }");
     }
 
+    // 物品 Meta 辅助方法（item/setDisplayName、item/addEnchant 使用）
+    const hasItemMeta = graph.findNodesByType("item/setDisplayName").length > 0 ||
+        graph.findNodesByType("item/addEnchant").length > 0;
+    if (hasItemMeta) {
+        imports.add("import org.bukkit.Material;");
+        imports.add("import org.bukkit.inventory.ItemStack;");
+        imports.add("import org.bukkit.inventory.meta.ItemMeta;");
+        imports.add("import org.bukkit.enchantments.Enchantment;");
+        classLines.push("");
+        classLines.push("    // 设置物品显示名称");
+        classLines.push("    private org.bukkit.inventory.ItemStack __setDisplayName(org.bukkit.inventory.ItemStack item, String name) {");
+        classLines.push("        if (item == null) return item;");
+        classLines.push("        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();");
+        classLines.push("        meta.setDisplayName(org.bukkit.ChatColor.translateAlternateColorCodes('&', name));");
+        classLines.push("        item.setItemMeta(meta);");
+        classLines.push("        return item;");
+        classLines.push("    }");
+        classLines.push("");
+        classLines.push("    // 添加附魔");
+        classLines.push("    private org.bukkit.inventory.ItemStack __addEnchant(org.bukkit.inventory.ItemStack item, org.bukkit.enchantments.Enchantment ench, int level) {");
+        classLines.push("        if (item == null) return item;");
+        classLines.push("        item.addUnsafeEnchantment(ench, level);");
+        classLines.push("        return item;");
+        classLines.push("    }");
+    }
+
+    // Vault 经济辅助方法（vault/getBalance、vault/withdraw、vault/deposit 使用）
+    const hasVault = graph.findNodesByType("vault/getBalance").length > 0 ||
+        graph.findNodesByType("vault/withdraw").length > 0 ||
+        graph.findNodesByType("vault/deposit").length > 0;
+    if (hasVault) {
+        classLines.push("");
+        classLines.push("    // 获取 Vault 经济接口（未安装 Vault 时返回 null）");
+        classLines.push("    private net.milkbowl.vault.economy.Economy __economy() {");
+        classLines.push("        if (Bukkit.getPluginManager().getPlugin(\"Vault\") == null) return null;");
+        classLines.push("        net.milkbowl.vault.economy.Economy econ = Bukkit.getServicesManager().getRegistration(net.milkbowl.vault.economy.Economy.class).getProvider();");
+        classLines.push("        return econ;");
+        classLines.push("    }");
+    }
+
     classLines.push("}");
 
     const importStr = [...imports].sort().join("\n");
@@ -1231,8 +1449,25 @@ function generatePluginYml() {
     if (website) yml += `website: ${website}\n`;
     if (desc) yml += `description: ${desc}\n`;
     if (load !== 'POSTWORLD') yml += `load: ${load}\n`;
-    if (soft) yml += `softdepend: [${soft.split(',').map(s => s.trim()).join(', ')}]\n`;
+    // 使用 Vault 节点时自动添加 Vault 软依赖
+    let vaultDep = false;
+    if (litegraphGraph) {
+        vaultDep = ["vault/getBalance", "vault/withdraw", "vault/deposit"].some(t => litegraphGraph.findNodesByType(t).length > 0);
+    }
+    let softList = soft ? soft.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (vaultDep && !softList.includes("Vault")) softList.push("Vault");
+    if (softList.length > 0) yml += `softdepend: [${softList.join(', ')}]\n`;
     if (foliaMode) yml += `folia-supported: true\n`;
+
+    // 检测是否使用了 Vault 经济节点，若使用则自动添加 depend
+    const vaultNodes = litegraphGraph
+        ? litegraphGraph.findNodesByType("vault/withdraw")
+            .concat(litegraphGraph.findNodesByType("vault/deposit"))
+            .concat(litegraphGraph.findNodesByType("vault/getBalance"))
+        : [];
+    if (vaultNodes.length > 0) {
+        yml += `depend: [Vault]\n`;
+    }
 
     const cmdNodes = litegraphGraph ? litegraphGraph.findNodesByType("command/onCommand") : [];
     if (cmdNodes.length > 0) {

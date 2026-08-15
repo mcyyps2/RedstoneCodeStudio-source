@@ -1,3 +1,34 @@
+// 常用节点记录（localStorage）
+const NODE_USAGE_KEY = 'node_usage_stats';
+
+function getNodeUsageStats() {
+    try {
+        return JSON.parse(localStorage.getItem(NODE_USAGE_KEY) || '{}');
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveNodeUsageStats(stats) {
+    try {
+        localStorage.setItem(NODE_USAGE_KEY, JSON.stringify(stats));
+    } catch (e) {}
+}
+
+function recordNodeUsage(nodeType) {
+    const stats = getNodeUsageStats();
+    stats[nodeType] = (stats[nodeType] || 0) + 1;
+    saveNodeUsageStats(stats);
+}
+
+function getMostUsedNodes(limit = 10) {
+    const stats = getNodeUsageStats();
+    return Object.entries(stats)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([type]) => type);
+}
+
 function initLiteGraph() {
     if (typeof LiteGraph === 'undefined') { setTimeout(initLiteGraph, 100); return; }
 
@@ -28,6 +59,12 @@ function initLiteGraph() {
     lgc.background_image = null;
     lgc.clear_background_color = "#181b27";
 
+    // 启用网格吸附（帮助节点对齐）
+    lgc.align_to_grid = true;
+    lgc.grid_size = 20; // 网格大小为 20px
+    lgc.draw_grid = true; // 显示网格线
+    lgc.grid_color = "#1e2230"; // 网格线颜色（淡色）
+
     // 中文分类名称映射
     const CN_CATEGORY = {
         "events":  "<i class=\"fa-regular fa-calendar\"></i> 事件节点",
@@ -52,25 +89,60 @@ function initLiteGraph() {
             if (!cats[cat]) cats[cat] = [];
             cats[cat].push(type);
         }
-        const catItems = Object.keys(cats).map(cat => ({
-            content: CN_CATEGORY[cat] || cat,
-            has_submenu: true,
-            callback: (_v, _opts, ev, prev) => {
-                const nodeItems = cats[cat].map(type => ({
-                    content: LiteGraph.registered_node_types[type].title || type,
-                    callback: () => {
-                        const node = LiteGraph.createNode(type);
-                        if (!node) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const x = (event.clientX - rect.left) / lgc.ds.scale - lgc.ds.offset[0];
-                        const y = (event.clientY - rect.top)  / lgc.ds.scale - lgc.ds.offset[1];
-                        node.pos = [x, y];
-                        graph.add(node);
-                    }
-                }));
-                new LiteGraph.ContextMenu(nodeItems, { event: ev, parentMenu: prev });
-            }
-        }));
+
+        // 构建分类菜单项
+        const catItems = [];
+
+        // 添加"常用节点"分类（优先显示）
+        const mostUsed = getMostUsedNodes(10);
+        if (mostUsed.length > 0) {
+            catItems.push({
+                content: "<i class=\"fa-solid fa-star\"></i> 常用节点",
+                has_submenu: true,
+                callback: (_v, _opts, ev, prev) => {
+                    const nodeItems = mostUsed.map(type => ({
+                        content: LiteGraph.registered_node_types[type]?.title || type,
+                        callback: () => {
+                            recordNodeUsage(type);
+                            const node = LiteGraph.createNode(type);
+                            if (!node) return;
+                            const rect = canvas.getBoundingClientRect();
+                            const x = (event.clientX - rect.left) / lgc.ds.scale - lgc.ds.offset[0];
+                            const y = (event.clientY - rect.top)  / lgc.ds.scale - lgc.ds.offset[1];
+                            node.pos = [x, y];
+                            graph.add(node);
+                        }
+                    }));
+                    new LiteGraph.ContextMenu(nodeItems, { event: ev, parentMenu: prev });
+                }
+            });
+            catItems.push(null); // 分隔线
+        }
+
+        // 添加其他分类
+        Object.keys(cats).forEach(cat => {
+            catItems.push({
+                content: CN_CATEGORY[cat] || cat,
+                has_submenu: true,
+                callback: (_v, _opts, ev, prev) => {
+                    const nodeItems = cats[cat].map(type => ({
+                        content: LiteGraph.registered_node_types[type].title || type,
+                        callback: () => {
+                            recordNodeUsage(type);
+                            const node = LiteGraph.createNode(type);
+                            if (!node) return;
+                            const rect = canvas.getBoundingClientRect();
+                            const x = (event.clientX - rect.left) / lgc.ds.scale - lgc.ds.offset[0];
+                            const y = (event.clientY - rect.top)  / lgc.ds.scale - lgc.ds.offset[1];
+                            node.pos = [x, y];
+                            graph.add(node);
+                        }
+                    }));
+                    new LiteGraph.ContextMenu(nodeItems, { event: ev, parentMenu: prev });
+                }
+            });
+        });
+
         new LiteGraph.ContextMenu(catItems, { event, parentMenu: prev_menu });
     }
 
@@ -155,6 +227,7 @@ function initLiteGraph() {
         e.preventDefault();
         const nodeType = e.dataTransfer.getData('nodeType');
         if (!nodeType) return;
+        recordNodeUsage(nodeType); // 记录节点使用频率
         const rect = canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left) / lgc.ds.scale - lgc.ds.offset[0];
         const y = (e.clientY - rect.top)  / lgc.ds.scale - lgc.ds.offset[1];

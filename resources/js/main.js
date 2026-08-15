@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function () {
     editors.java = initEditor("editor-java", "java",  false);
     editors.yml  = initEditor("editor-yml",  "yaml",  false);
     editors.cfg  = initEditor("editor-cfg",  "yaml",  false);
-    editors.pom  = initEditor("editor-pom",  "xml",   false);
+    editors.pom  = initEditor("editor-pom",  "xml",   true); // 安全加固：pom.xml设为只读
 
     //  配置项默认值 
 

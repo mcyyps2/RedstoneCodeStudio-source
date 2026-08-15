@@ -1088,6 +1088,163 @@ function registerAllNodes() {
     applyOnConfigure(CheckTypeNode);
     LiteGraph.registerNodeType("logic/checkType", CheckTypeNode);
 
+    //  === GUI / 物品栏交互节点 ===
+
+    defNode("gui/openChest", "打开箱子GUI", function () {
+        this.addInput("执行流", "exec");
+        this.addInput("玩家", "player");
+        this.addInput("标题", "string");
+        this.addOutput("执行流", "exec");
+        this.addProperty("行数", "3");
+        this.addWidget("combo", "行数", "3", (v) => { this.properties["行数"] = v; setTimeout(regenerateAll, 80); },
+            { values: ["1", "2", "3", "4", "5", "6"] });
+        this._propKeys = ["行数"];
+        this.size = [200, 85];
+        this.shape = LiteGraph.BOX_SHAPE;
+    }, C.guiFg, C.guiBg);
+
+    defNode("gui/setSlot", "设置GUI槽位", function () {
+        this.addInput("执行流", "exec");
+        this.addInput("玩家", "player");
+        this.addInput("物品类型", "string");
+        this.addInput("物品", "object");
+        this.addOutput("执行流", "exec");
+        this.addProperty("槽位", 0);
+        this.addWidget("number", "槽位", 0, (v) => { this.properties["槽位"] = v; setTimeout(regenerateAll, 80); });
+        this.addProperty("数量", 1);
+        this.addWidget("number", "数量", 1, (v) => { this.properties["数量"] = v; setTimeout(regenerateAll, 80); });
+        this._propKeys = ["槽位", "数量"];
+        this.size = [200, 110];
+        this.shape = LiteGraph.BOX_SHAPE;
+    }, C.guiFg, C.guiBg);
+
+    defNode("events/inventoryClick", "GUI点击事件", function () {
+        this.addOutput("执行流", "exec");
+        this.addOutput("玩家", "player");
+        this.addOutput("槽位", "number");
+        this.addOutput("物品", "string");
+        this.size = [180, 110];
+    }, C.evFg, C.evBg);
+
+    defNode("events/inventoryClose", "GUI关闭事件", function () {
+        this.addOutput("执行流", "exec");
+        this.addOutput("玩家", "player");
+        this.size = [180, 65];
+    }, C.evFg, C.evBg);
+
+    //  === Vault 经济节点 ===
+
+    defNode("vault/getBalance", "获取余额", function () {
+        this.addInput("玩家", "player");
+        this.addOutput("余额", "number");
+        this.size = [160, 65];
+    }, C.vltFg, C.vltBg);
+
+    defNode("vault/withdraw", "扣除金币", function () {
+        this.addInput("执行流", "exec");
+        this.addInput("玩家", "player");
+        this.addInput("金额", "number");
+        this.addOutput("执行流", "exec");
+        this.size = [190, 85];
+    }, C.vltFg, C.vltBg);
+
+    defNode("vault/deposit", "给予金币", function () {
+        this.addInput("执行流", "exec");
+        this.addInput("玩家", "player");
+        this.addInput("金额", "number");
+        this.addOutput("执行流", "exec");
+        this.size = [190, 85];
+    }, C.vltFg, C.vltBg);
+
+    //  === 物品 Meta 操作节点 ===
+
+    defNode("item/createBuilder", "创建物品", function () {
+        this.addInput("物品类型", "string");
+        this.addOutput("物品", "object");
+        this.addProperty("数量", 1);
+        this.addWidget("number", "数量", 1, (v) => { this.properties["数量"] = v; setTimeout(regenerateAll, 80); });
+        this._propKeys = ["数量"];
+        this.size = [190, 80];
+        this.shape = LiteGraph.BOX_SHAPE;
+    }, C.itmFg, C.itmBg);
+
+    defNode("item/setDisplayName", "设置物品名", function () {
+        this.addInput("物品", "object");
+        this.addInput("名称", "string");
+        this.addOutput("物品", "object");
+        this.size = [180, 80];
+    }, C.itmFg, C.itmBg);
+
+    defNode("item/addEnchant", "添加附魔", function () {
+        this.addInput("物品", "object");
+        this.addOutput("物品", "object");
+        this.addProperty("附魔", "SHARPNESS");
+        this.addWidget("combo", "附魔", "SHARPNESS", (v) => { this.properties["附魔"] = v; setTimeout(regenerateAll, 80); },
+            { values: ["SHARPNESS", "PROTECTION", "FIRE_ASPECT", "KNOCKBACK", "EFFICIENCY", "UNBREAKING", "FORTUNE", "SILK_TOUCH"] });
+        this.addProperty("等级", 1);
+        this.addWidget("number", "等级", 1, (v) => { this.properties["等级"] = v; setTimeout(regenerateAll, 80); });
+        this._propKeys = ["附魔", "等级"];
+        this.size = [190, 100];
+        this.shape = LiteGraph.BOX_SHAPE;
+    }, C.itmFg, C.itmBg);
+
+    //  === 补充事件节点 ===
+
+    defNode("events/playerCommand", "玩家执行指令", function () {
+        this.addOutput("执行流", "exec");
+        this.addOutput("玩家", "player");
+        this.addOutput("指令", "string");
+        this.size = [180, 80];
+    }, C.evFg, C.evBg);
+
+    defNode("events/projectileHit", "投掷物命中", function () {
+        this.addOutput("执行流", "exec");
+        this.addOutput("实体", "string");
+        this.size = [170, 65];
+    }, C.evFg, C.evBg);
+
+    defNode("events/entityDeath", "实体死亡", function () {
+        this.addOutput("执行流", "exec");
+        this.addOutput("实体类型", "string");
+        this.size = [180, 65];
+    }, C.evFg, C.evBg);
+
+    defNode("events/foodLevelChange", "饱食度变化", function () {
+        this.addOutput("执行流", "exec");
+        this.addOutput("玩家", "player");
+        this.addOutput("新饱食度", "number");
+        this.size = [180, 80];
+    }, C.evFg, C.evBg);
+
+    defNode("events/portalCreate", "传送门创建", function () {
+        this.addOutput("执行流", "exec");
+        this.size = [160, 50];
+    }, C.evFg, C.evBg);
+
+    //  === Scoreboard 节点 ===
+
+    defNode("scoreboard/setObjective", "设置计分板目标", function () {
+        this.addInput("执行流", "exec");
+        this.addInput("玩家", "player");
+        this.addInput("标题", "string");
+        this.addOutput("执行流", "exec");
+        this.addProperty("显示名称", "分数");
+        this.addWidget("text", "显示名称", "分数", (v) => { this.properties["显示名称"] = v; setTimeout(regenerateAll, 80); });
+        this._propKeys = ["显示名称"];
+        this.size = [210, 90];
+        this.shape = LiteGraph.BOX_SHAPE;
+    }, C.scbFg, C.scbBg);
+
+    defNode("scoreboard/setScore", "设置分数", function () {
+        this.addInput("执行流", "exec");
+        this.addInput("玩家", "player");
+        this.addInput("目标", "string");
+        this.addInput("条目", "string");
+        this.addInput("分数", "number");
+        this.addOutput("执行流", "exec");
+        this.size = [210, 110];
+    }, C.scbFg, C.scbBg);
+
     //  端口颜色配置 
     LiteGraph.slot_types_default_out = LiteGraph.slot_types_default_out || {};
     LiteGraph.slot_types_default_out["exec"] = { color_off: "#ffaa00", color_on: "#ffcc44" };
