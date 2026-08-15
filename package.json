@@ -1,0 +1,52 @@
+{
+  "name": "redstonecodestudio",
+  "version": "2.0.0",
+  "description": "Minecraft插件可视化开发工具",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.4",
+    "pinia": "^2.1.6",
+    "lit": "^2.7.4",
+    "@lit/react": "^1.0.0",
+    "monaco-editor": "^0.40.0",
+    "prismjs": "^1.29.0",
+    "marked": "^7.0.5",
+    "file-saver": "^2.0.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.3.4",
+    "vite": "^4.4.9",
+    "jest": "^29.7.0",
+    "@vue/test-utils": "^2.4.2",
+    "@jest/globals": "^29.7.0",
+    "@types/node": "^20.4.5",
+    "@types/jest": "^29.5.3",
+    "typescript": "^5.1.6",
+    "vite-tsconfig-paths": "^4.2.0"
+  },
+  "keywords": [
+    "minecraft",
+    "spigot",
+    "paper",
+    "plugin",
+    "visual",
+    "development",
+    "ide"
+  ],
+  "author": "RedstoneCodeStudio Team",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcyyps2/RedstoneCodeStudio-source.git"
+  },
+  "homepage": "https://github.com/mcyyps2/RedstoneCodeStudio-source#readme"
+}
